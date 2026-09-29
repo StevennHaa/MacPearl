@@ -8,21 +8,66 @@
 import SwiftUI
 
 struct HomeView: View {
+    @StateObject private var camera = CameraSessionController()
+
     var body: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "faceid")
-                .font(.system(size: 48))
-                .foregroundStyle(.tint)
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("MacPearl")
+                    .font(.title)
+                    .fontWeight(.semibold)
 
-            Text("MacPearl")
-                .font(.title)
-                .fontWeight(.semibold)
+                Text("Live camera preview")
+                    .foregroundStyle(.secondary)
+            }
 
-            Text("Camera preview is the first milestone.")
-                .foregroundStyle(.secondary)
+            ZStack {
+                CameraPreviewView(session: camera.session)
+                    .background(.black)
+
+                if camera.state != .running {
+                    cameraStatus
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .overlay {
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(.quaternary, lineWidth: 1)
+            }
+
+            Label(camera.state.message, systemImage: statusSymbol)
+                .foregroundStyle(camera.state == .running ? .green : .secondary)
         }
-        .padding(40)
-        .frame(minWidth: 520, minHeight: 360)
+        .padding(24)
+        .frame(minWidth: 680, minHeight: 520)
+        .onAppear { camera.start() }
+        .onDisappear { camera.stop() }
+    }
+
+    @ViewBuilder
+    private var cameraStatus: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "video.slash")
+                .font(.system(size: 36))
+
+            Text(camera.state.message)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 360)
+
+            if camera.state == .unauthorized || camera.state == .unavailable {
+                Button("Try Again") {
+                    camera.start()
+                }
+            } else {
+                ProgressView()
+            }
+        }
+        .padding(24)
+        .foregroundStyle(.white)
+    }
+
+    private var statusSymbol: String {
+        camera.state == .running ? "checkmark.circle.fill" : "video"
     }
 }
 
