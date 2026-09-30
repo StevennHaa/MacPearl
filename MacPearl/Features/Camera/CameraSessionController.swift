@@ -147,11 +147,13 @@ final class CameraSessionController: NSObject, ObservableObject, @unchecked Send
         guard shouldRun, !isInterrupted else { return }
 
         guard let camera = preferredUsableCamera() else {
+            CameraDiagnostics.noUsableCameraFound()
             scheduleRetryOrBecomeUnavailable()
             return
         }
 
         do {
+            CameraDiagnostics.selectedDevice(camera)
             try configureSession(for: camera)
 
             // A full restart gives a stalled session a chance to produce frames again.
@@ -167,6 +169,7 @@ final class CameraSessionController: NSObject, ObservableObject, @unchecked Send
 
             isWaitingForFirstFrame = true
         } catch {
+            CameraDiagnostics.configurationFailed(error)
             scheduleRetryOrBecomeUnavailable()
         }
     }
@@ -180,12 +183,18 @@ final class CameraSessionController: NSObject, ObservableObject, @unchecked Send
 
         if currentInput?.device.uniqueID != camera.uniqueID {
             let input = try AVCaptureDeviceInput(device: camera)
+            let previousInput = currentInput
 
-            if let currentInput {
-                session.removeInput(currentInput)
+            if let previousInput {
+                session.removeInput(previousInput)
+                currentInput = nil
             }
 
             guard session.canAddInput(input) else {
+                if let previousInput, session.canAddInput(previousInput) {
+                    session.addInput(previousInput)
+                    currentInput = previousInput
+                }
                 throw CameraError.cannotAddInput
             }
 
@@ -240,6 +249,7 @@ final class CameraSessionController: NSObject, ObservableObject, @unchecked Send
         guard shouldRun, !isInterrupted else { return }
 
         if let deadline = recoveryDeadline, DispatchTime.now() < deadline {
+            CameraDiagnostics.retryScheduled()
             retryWorkItem?.cancel()
             let workItem = DispatchWorkItem { [weak self] in
                 self?.attemptToStartCamera()
@@ -247,6 +257,7 @@ final class CameraSessionController: NSObject, ObservableObject, @unchecked Send
             retryWorkItem = workItem
             sessionQueue.asyncAfter(deadline: .now() + retryDelay, execute: workItem)
         } else {
+            CameraDiagnostics.recoveryTimedOut()
             transitionToUnavailable()
         }
     }
@@ -298,6 +309,7 @@ final class CameraSessionController: NSObject, ObservableObject, @unchecked Send
         let now = DispatchTime.now()
         if isWaitingForFirstFrame {
             if let deadline = recoveryDeadline, now >= deadline {
+                CameraDiagnostics.recoveryTimedOut()
                 transitionToUnavailable()
             }
             return
@@ -306,6 +318,7 @@ final class CameraSessionController: NSObject, ObservableObject, @unchecked Send
         guard let lastFrameTime else { return }
         let elapsed = Double(now.uptimeNanoseconds - lastFrameTime.uptimeNanoseconds) / 1_000_000_000
         if elapsed >= frameStallTimeout {
+            CameraDiagnostics.frameStalled(elapsed: elapsed)
             startRecovery()
         }
     }
@@ -361,6 +374,7 @@ final class CameraSessionController: NSObject, ObservableObject, @unchecked Send
     }
 
     private func reevaluateCamera() {
+        CameraDiagnostics.cameraAvailabilityChanged()
         sessionQueue.async { [weak self] in
             guard let self, self.shouldRun else { return }
             self.startRecovery()
@@ -392,8 +406,10 @@ final class CameraSessionController: NSObject, ObservableObject, @unchecked Send
                 forName: AVCaptureSession.runtimeErrorNotification,
                 object: session,
                 queue: nil
-            ) { [weak self] _ in
-                self?.sessionQueue.async { self?.handleRuntimeError() }
+            ) { [weak self] notification in
+                self?.sessionQueue.async {
+                    self?.handleRuntimeError(notification)
+                }
             }
         )
     }
@@ -423,6 +439,7 @@ final class CameraSessionController: NSObject, ObservableObject, @unchecked Send
     private func handleSessionInterrupted() {
         dispatchPrecondition(condition: .onQueue(sessionQueue))
         guard shouldRun else { return }
+        CameraDiagnostics.sessionInterrupted()
         isInterrupted = true
         resetRecoveryState()
         recoveryDeadline = .now() + recoveryTimeout
@@ -430,6 +447,7 @@ final class CameraSessionController: NSObject, ObservableObject, @unchecked Send
 
         let workItem = DispatchWorkItem { [weak self] in
             guard let self, self.shouldRun, self.isInterrupted else { return }
+            CameraDiagnostics.recoveryTimedOut()
             self.transitionToUnavailable()
         }
         retryWorkItem = workItem
@@ -439,13 +457,16 @@ final class CameraSessionController: NSObject, ObservableObject, @unchecked Send
     private func handleInterruptionEnded() {
         dispatchPrecondition(condition: .onQueue(sessionQueue))
         guard shouldRun else { return }
+        CameraDiagnostics.interruptionEnded()
         isInterrupted = false
         startRecovery()
     }
 
-    private func handleRuntimeError() {
+    private func handleRuntimeError(_ notification: Notification) {
         dispatchPrecondition(condition: .onQueue(sessionQueue))
         guard shouldRun else { return }
+        let error = notification.userInfo?[AVCaptureSessionErrorKey] as? AVError
+        CameraDiagnostics.runtimeError(error)
         isInterrupted = false
         startRecovery()
     }
@@ -453,6 +474,7 @@ final class CameraSessionController: NSObject, ObservableObject, @unchecked Send
     private func handleSystemSleep() {
         dispatchPrecondition(condition: .onQueue(sessionQueue))
         guard shouldRun else { return }
+        CameraDiagnostics.systemWillSleep()
         isInterrupted = true
         resetRecoveryState()
         publish(.interrupted)
@@ -461,13 +483,16 @@ final class CameraSessionController: NSObject, ObservableObject, @unchecked Send
     private func handleSystemWake() {
         dispatchPrecondition(condition: .onQueue(sessionQueue))
         guard shouldRun else { return }
+        CameraDiagnostics.systemDidWake()
         isInterrupted = false
         startRecovery()
     }
 
     private func publish(_ newState: CameraState) {
         DispatchQueue.main.async { [weak self] in
-            self?.state = newState
+            guard let self else { return }
+            CameraDiagnostics.stateTransition(from: self.state, to: newState)
+            self.state = newState
         }
     }
 }
