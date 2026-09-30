@@ -1,6 +1,6 @@
 # MacPearl
 
-MacPearl is an experimental macOS app for local face recognition and screen-unlock research.
+MacPearl is an experimental macOS app to use FaceID for Macbook
 
 ## Requirements
 
