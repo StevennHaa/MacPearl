@@ -50,6 +50,12 @@ enum CameraDiagnostics {
         )
     }
 
+    static func faceDetectionFailed(_ error: Error) {
+        logger.error(
+            "Face detection failed: \(error.localizedDescription, privacy: .private)"
+        )
+    }
+
     static func sessionInterrupted() {
         logger.notice("Capture session interrupted")
     }

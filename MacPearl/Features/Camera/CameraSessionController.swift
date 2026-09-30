@@ -6,6 +6,7 @@
 import AppKit
 import AVFoundation
 import Combine
+import CoreVideo
 import Foundation
 
 enum CameraState: Equatable {
@@ -37,12 +38,15 @@ enum CameraState: Equatable {
 
 final class CameraSessionController: NSObject, ObservableObject, @unchecked Sendable {
     @Published private(set) var state: CameraState = .idle
+    @Published private(set) var faceDetectionResult = FaceDetectionResult.empty
 
     let session = AVCaptureSession()
 
     private let sessionQueue = DispatchQueue(label: "com.stevenha.MacPearl.camera-session")
     private let sampleQueue = DispatchQueue(label: "com.stevenha.MacPearl.camera-samples")
     private let videoOutput = AVCaptureVideoDataOutput()
+    private let frameSampler: CameraFrameSampler
+    private let faceDetector = VisionFaceDetector()
 
     private var currentInput: AVCaptureDeviceInput?
     private var deviceConnectionObservation: NSKeyValueObservation?
@@ -63,9 +67,14 @@ final class CameraSessionController: NSObject, ObservableObject, @unchecked Send
     private let retryDelay: TimeInterval = 0.75
     private let frameStallTimeout: TimeInterval = 3
 
-    override init() {
+    init(sampledFramesPerSecond: Double = 5) {
+        frameSampler = CameraFrameSampler(framesPerSecond: sampledFramesPerSecond)
         super.init()
         videoOutput.alwaysDiscardsLateVideoFrames = true
+        videoOutput.videoSettings = [
+            kCVPixelBufferPixelFormatTypeKey as String:
+                kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
+        ]
         videoOutput.setSampleBufferDelegate(self, queue: sampleQueue)
         observeCameraAvailability()
         observeSessionLifecycle()
@@ -506,6 +515,56 @@ extension CameraSessionController: AVCaptureVideoDataOutputSampleBufferDelegate 
         sessionQueue.async { [weak self] in
             self?.receivedVideoFrame()
         }
+
+        // The preview layer renders directly from the capture session. Throttle only
+        // the frames handed to analysis so detector work cannot reduce preview FPS.
+        guard frameSampler.shouldSample(at: ProcessInfo.processInfo.systemUptime) else {
+            return
+        }
+
+        do {
+            let faces = try faceDetector.detectFaces(in: sampleBuffer)
+            publishFaceDetection(FaceDetectionResult(faces: faces, errorDescription: nil))
+        } catch {
+            CameraDiagnostics.faceDetectionFailed(error)
+            publishFaceDetection(
+                FaceDetectionResult(faces: [], errorDescription: error.localizedDescription)
+            )
+        }
+    }
+
+    private func publishFaceDetection(_ result: FaceDetectionResult) {
+        DispatchQueue.main.async { [weak self] in
+            self?.faceDetectionResult = result
+        }
+    }
+}
+
+/// Rate limiter used only from the serial camera sample queue.
+private final class CameraFrameSampler: @unchecked Sendable {
+    private let minimumInterval: TimeInterval
+    private var lastSampleTime: TimeInterval?
+
+    init(framesPerSecond: Double) {
+        precondition(framesPerSecond > 0, "The frame sampling rate must be positive.")
+        minimumInterval = 1 / framesPerSecond
+    }
+
+    func shouldSample(at time: TimeInterval) -> Bool {
+        guard let lastSampleTime else {
+            self.lastSampleTime = time
+            return true
+        }
+
+        // Rebase after a clock discontinuity instead of suppressing frames forever.
+        guard time >= lastSampleTime else {
+            self.lastSampleTime = time
+            return true
+        }
+
+        guard time - lastSampleTime >= minimumInterval else { return false }
+        self.lastSampleTime = time
+        return true
     }
 }
 

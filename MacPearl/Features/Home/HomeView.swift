@@ -35,8 +35,17 @@ struct HomeView: View {
                     .stroke(.quaternary, lineWidth: 1)
             }
 
-            Label(camera.state.message, systemImage: statusSymbol)
-                .foregroundStyle(camera.state == .running ? .green : .secondary)
+            HStack {
+                Label(camera.state.message, systemImage: statusSymbol)
+                    .foregroundStyle(camera.state == .running ? .green : .secondary)
+
+                Spacer()
+
+                if camera.state == .running {
+                    Label(faceDetectionMessage, systemImage: "person.crop.rectangle")
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
         .padding(24)
         .frame(minWidth: 680, minHeight: 520)
@@ -77,6 +86,15 @@ struct HomeView: View {
         default:
             false
         }
+    }
+
+    private var faceDetectionMessage: String {
+        if camera.faceDetectionResult.errorDescription != nil {
+            return "Detection unavailable"
+        }
+
+        let count = camera.faceDetectionResult.faces.count
+        return count == 1 ? "1 face" : "\(count) faces"
     }
 }
 
