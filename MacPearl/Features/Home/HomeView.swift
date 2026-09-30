@@ -54,7 +54,7 @@ struct HomeView: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 360)
 
-            if camera.state == .unauthorized || camera.state == .unavailable {
+            if shouldOfferRetry {
                 Button("Try Again") {
                     camera.start()
                 }
@@ -68,6 +68,15 @@ struct HomeView: View {
 
     private var statusSymbol: String {
         camera.state == .running ? "checkmark.circle.fill" : "video"
+    }
+
+    private var shouldOfferRetry: Bool {
+        switch camera.state {
+        case .unauthorized, .unavailable, .failed:
+            true
+        default:
+            false
+        }
     }
 }
 
