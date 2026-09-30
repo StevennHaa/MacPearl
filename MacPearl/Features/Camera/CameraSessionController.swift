@@ -67,7 +67,7 @@ final class CameraSessionController: NSObject, ObservableObject, @unchecked Send
     private let retryDelay: TimeInterval = 0.75
     private let frameStallTimeout: TimeInterval = 3
 
-    init(sampledFramesPerSecond: Double = 5) {
+    init(sampledFramesPerSecond: Double = 15) {
         frameSampler = CameraFrameSampler(framesPerSecond: sampledFramesPerSecond)
         super.init()
         videoOutput.alwaysDiscardsLateVideoFrames = true
