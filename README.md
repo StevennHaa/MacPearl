@@ -1,6 +1,6 @@
 # MacPearl
 
-MacPearl is an experimental macOS app to use FaceID for Macbook
+MacPearl is an experimental macOS app to allow FaceID for Macbook
 
 ## Requirements
 
