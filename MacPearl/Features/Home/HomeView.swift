@@ -22,7 +22,10 @@ struct HomeView: View {
             }
 
             ZStack {
-                CameraPreviewView(session: camera.session)
+                CameraPreviewView(
+                    session: camera.session,
+                    faces: camera.state == .running ? camera.faceDetectionResult.faces : []
+                )
                     .background(.black)
 
                 if camera.state != .running {
