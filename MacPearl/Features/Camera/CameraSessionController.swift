@@ -140,6 +140,20 @@ final class CameraSessionController: NSObject, ObservableObject, @unchecked Send
         resetFaceCapture()
     }
 
+    func captureEnrollmentPose(_ pose: FaceCapturePose) {
+        resetFaceCapture(policy: .enrollment(pose))
+    }
+
+    func finishEnrollmentCapture() {
+        sampleQueue.async { [weak self] in
+            guard let self else { return }
+            self.faceCaptureIsComplete = true
+            DispatchQueue.main.async { [weak self] in
+                self?.capturedFace = nil
+            }
+        }
+    }
+
     private func startAuthorizedCamera() {
         sessionQueue.async { [weak self] in
             guard let self else { return }
@@ -600,10 +614,10 @@ extension CameraSessionController: AVCaptureVideoDataOutputSampleBufferDelegate 
         }
     }
 
-    private func resetFaceCapture() {
+    private func resetFaceCapture(policy: FaceCapturePolicy = .balanced) {
         sampleQueue.async { [weak self] in
             guard let self else { return }
-            self.faceCaptureGate.reset()
+            self.faceCaptureGate = FaceCaptureGate(policy: policy)
             self.faceCaptureIsComplete = false
             DispatchQueue.main.async { [weak self] in
                 self?.faceCaptureState = .searching

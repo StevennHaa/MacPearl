@@ -9,6 +9,7 @@ import SwiftUI
 
 struct HomeView: View {
     @StateObject private var camera = CameraSessionController()
+    @StateObject private var enrollment = EnrollmentController()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -46,7 +47,7 @@ struct HomeView: View {
                 Spacer()
 
                 if camera.state == .running {
-                    if camera.capturedFace != nil {
+                    if camera.capturedFace != nil, !enrollment.isActive {
                         Button("Retake") { camera.retakeFace() }
                     } else if case .holding(let progress) = camera.faceCaptureState {
                         ProgressView(value: progress)
@@ -54,11 +55,49 @@ struct HomeView: View {
                     }
                 }
             }
+
+            enrollmentControls
         }
         .padding(24)
         .frame(minWidth: 680, minHeight: 520)
         .onAppear { camera.start() }
         .onDisappear { camera.stop() }
+        .onReceive(camera.$capturedFace) { frame in
+            guard let frame else { return }
+            enrollment.receive(frame, using: camera)
+        }
+    }
+
+    @ViewBuilder
+    private var enrollmentControls: some View {
+        HStack(spacing: 12) {
+            switch enrollment.state {
+            case .idle:
+                Button("Begin Enrollment") { enrollment.begin(using: camera) }
+            case .capturing(let pose, let completed):
+                Label("Step \(completed + 1) of 3: \(pose.instruction)", systemImage: "person.badge.plus")
+                Spacer()
+                Button("Cancel") { enrollment.cancel(using: camera) }
+            case .processing(_, let completed):
+                ProgressView()
+                    .controlSize(.small)
+                Text("Processing sample \(completed + 1) of 3…")
+                Spacer()
+                Button("Cancel") { enrollment.cancel(using: camera) }
+            case .enrolled(let template):
+                Label("Local template ready (\(template.embeddings.count) poses)", systemImage: "checkmark.shield.fill")
+                    .foregroundStyle(.green)
+                Spacer()
+                Button("Replace") { enrollment.replace(using: camera) }
+                Button("Delete") { enrollment.delete(using: camera) }
+            case .failed(let message):
+                Label(message, systemImage: "xmark.octagon")
+                    .foregroundStyle(.red)
+                Spacer()
+                Button("Try Again") { enrollment.begin(using: camera) }
+                Button("Cancel") { enrollment.cancel(using: camera) }
+            }
+        }
     }
 
     @ViewBuilder
@@ -104,6 +143,13 @@ struct HomeView: View {
 
     private var statusMessage: String {
         guard camera.state == .running else { return camera.state.message }
+        switch enrollment.state {
+        case .capturing(let pose, _): return pose.instruction
+        case .processing: return "Creating face embedding…"
+        case .enrolled: return "Enrollment complete"
+        case .failed(let message): return message
+        case .idle: break
+        }
         if camera.capturedFace != nil { return "Face captured — ready to continue" }
         switch camera.faceCaptureState {
         case .searching: return "Position your face in the camera"
