@@ -81,7 +81,7 @@ final class VisionFaceDetector: @unchecked Sendable {
         ]
     }
 
-    private static func basicFace(_ observation: VNFaceObservation) -> DetectedFace {
+    nonisolated private static func basicFace(_ observation: VNFaceObservation) -> DetectedFace {
         DetectedFace(
             boundingBox: observation.boundingBox,
             confidence: observation.confidence,

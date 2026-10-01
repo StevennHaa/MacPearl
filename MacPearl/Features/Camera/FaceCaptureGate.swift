@@ -12,13 +12,48 @@ struct FacePoseTarget: Equatable, Sendable {
     let rollRange: ClosedRange<Double>
 
     static let forward = FacePoseTarget(
-        yawRange: degrees(-15)...degrees(15),
+        yawRange: degrees(-12)...degrees(12),
         pitchRange: degrees(-15)...degrees(15),
         rollRange: degrees(-12)...degrees(12)
     )
 
+
+    static let left = FacePoseTarget(
+        yawRange: degrees(18)...degrees(40),
+        pitchRange: degrees(-15)...degrees(15),
+        rollRange: degrees(-15)...degrees(15)
+    )
+
+    static let right = FacePoseTarget(
+        yawRange: degrees(-40)...degrees(-18),
+        pitchRange: degrees(-15)...degrees(15),
+        rollRange: degrees(-15)...degrees(15)
+    )
+
     private static func degrees(_ value: Double) -> Double {
         value * .pi / 180
+    }
+}
+
+enum FaceCapturePose: String, CaseIterable, Hashable, Sendable {
+    case forward
+    case left
+    case right
+
+    var instruction: String {
+        switch self {
+        case .forward: "Look straight at the camera"
+        case .left: "Slowly turn your face to the left"
+        case .right: "Slowly turn your face to the right"
+        }
+    }
+
+    fileprivate var target: FacePoseTarget {
+        switch self {
+        case .forward: .forward
+        case .left: .left
+        case .right: .right
+        }
     }
 }
 
@@ -30,6 +65,7 @@ struct FaceCapturePolicy: Equatable, Sendable {
     let maximumVerticalCenterOffset: CGFloat
     let minimumCaptureQuality: Float
     let minimumLandmarkConfidence: Float
+    let pose: FaceCapturePose
     let requiredPose: FacePoseTarget
     let holdDuration: TimeInterval
 
@@ -41,9 +77,25 @@ struct FaceCapturePolicy: Equatable, Sendable {
         maximumVerticalCenterOffset: 0.15,
         minimumCaptureQuality: 0.45,
         minimumLandmarkConfidence: 0.50,
+        pose: .forward,
         requiredPose: .forward,
         holdDuration: 0.75
     )
+
+    static func enrollment(_ pose: FaceCapturePose) -> FaceCapturePolicy {
+        FaceCapturePolicy(
+            minimumDetectionConfidence: 0.80,
+            minimumFaceWidth: 0.22,
+            minimumFaceHeight: 0.28,
+            maximumHorizontalCenterOffset: 0.15,
+            maximumVerticalCenterOffset: 0.15,
+            minimumCaptureQuality: 0.45,
+            minimumLandmarkConfidence: 0.50,
+            pose: pose,
+            requiredPose: pose.target,
+            holdDuration: 0.75
+        )
+    }
 }
 
 enum FaceCaptureIssue: Equatable, Sendable {
@@ -52,7 +104,7 @@ enum FaceCaptureIssue: Equatable, Sendable {
     case lowConfidence
     case tooSmall
     case offCenter
-    case notForwardFacing
+    case wrongPose(FaceCapturePose)
     case occluded
     case lowQuality
     case detectorUnavailable
@@ -64,7 +116,7 @@ enum FaceCaptureIssue: Equatable, Sendable {
         case .lowConfidence: "Make sure your face is clearly visible"
         case .tooSmall: "Move closer to the camera"
         case .offCenter: "Center your face"
-        case .notForwardFacing: "Look straight at the camera"
+        case .wrongPose(let pose): pose.instruction
         case .occluded: "Make sure your eyes, nose, and mouth are visible"
         case .lowQuality: "Hold still and improve the lighting"
         case .detectorUnavailable: "Face detection is temporarily unavailable"
@@ -167,7 +219,7 @@ struct FaceCaptureGate: Sendable {
               policy.requiredPose.yawRange.contains(yaw),
               policy.requiredPose.pitchRange.contains(pitch),
               policy.requiredPose.rollRange.contains(roll) else {
-            return .notForwardFacing
+            return .wrongPose(policy.pose)
         }
 
         guard face.hasRequiredLandmarks,
