@@ -86,17 +86,6 @@ final class EnrollmentController: ObservableObject {
         camera.retakeFace()
     }
 
-    func replace(using camera: CameraSessionController) {
-        begin(using: camera)
-    }
-
-    func delete(using camera: CameraSessionController) {
-        embeddings.removeAll()
-        model = nil
-        state = .idle
-        camera.retakeFace()
-    }
-
     private static func loadModel() throws -> CoreMLFaceEmbeddingModel {
         guard let modelURL = Bundle.main.url(
             forResource: "InsightFaceMobileFaceNet",

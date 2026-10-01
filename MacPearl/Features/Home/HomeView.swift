@@ -87,9 +87,6 @@ struct HomeView: View {
             case .enrolled(let template):
                 Label("Local template ready (\(template.embeddings.count) poses)", systemImage: "checkmark.shield.fill")
                     .foregroundStyle(.green)
-                Spacer()
-                Button("Replace") { enrollment.replace(using: camera) }
-                Button("Delete") { enrollment.delete(using: camera) }
             case .failed(let message):
                 Label(message, systemImage: "xmark.octagon")
                     .foregroundStyle(.red)
