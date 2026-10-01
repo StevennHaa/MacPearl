@@ -24,7 +24,8 @@ struct HomeView: View {
             ZStack {
                 CameraPreviewView(
                     session: camera.session,
-                    faces: camera.state == .running ? camera.faceDetectionResult.faces : []
+                    faces: camera.state == .running ? camera.faceDetectionResult.faces : [],
+                    captureState: camera.faceCaptureState
                 )
                     .background(.black)
 
@@ -39,14 +40,18 @@ struct HomeView: View {
             }
 
             HStack {
-                Label(camera.state.message, systemImage: statusSymbol)
-                    .foregroundStyle(camera.state == .running ? .green : .secondary)
+                Label(statusMessage, systemImage: statusSymbol)
+                    .foregroundStyle(statusColor)
 
                 Spacer()
 
                 if camera.state == .running {
-                    Label(faceDetectionMessage, systemImage: "person.crop.rectangle")
-                        .foregroundStyle(.secondary)
+                    if camera.capturedFace != nil {
+                        Button("Retake") { camera.retakeFace() }
+                    } else if case .holding(let progress) = camera.faceCaptureState {
+                        ProgressView(value: progress)
+                            .frame(width: 100)
+                    }
                 }
             }
         }
@@ -79,7 +84,13 @@ struct HomeView: View {
     }
 
     private var statusSymbol: String {
-        camera.state == .running ? "checkmark.circle.fill" : "video"
+        guard camera.state == .running else { return "video" }
+        switch camera.faceCaptureState {
+        case .accepted: return "checkmark.circle.fill"
+        case .rejected: return "exclamationmark.triangle"
+        case .holding: return "person.crop.rectangle"
+        case .searching: return "viewfinder"
+        }
     }
 
     private var shouldOfferRetry: Bool {
@@ -91,13 +102,22 @@ struct HomeView: View {
         }
     }
 
-    private var faceDetectionMessage: String {
-        if camera.faceDetectionResult.errorDescription != nil {
-            return "Detection unavailable"
+    private var statusMessage: String {
+        guard camera.state == .running else { return camera.state.message }
+        if camera.capturedFace != nil { return "Face captured — ready to continue" }
+        switch camera.faceCaptureState {
+        case .searching: return "Position your face in the camera"
+        case .rejected(let issue): return issue.message
+        case .holding: return "Hold still…"
+        case .accepted: return "Face captured — ready to continue"
         }
+    }
 
-        let count = camera.faceDetectionResult.faces.count
-        return count == 1 ? "1 face" : "\(count) faces"
+    private var statusColor: Color {
+        guard camera.state == .running else { return .secondary }
+        if camera.capturedFace != nil { return .green }
+        if case .rejected = camera.faceCaptureState { return .orange }
+        return .green
     }
 }
 
