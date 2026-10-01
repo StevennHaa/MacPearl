@@ -6,6 +6,7 @@
 import AppKit
 import AVFoundation
 import Combine
+import CoreImage
 import CoreVideo
 import Foundation
 
@@ -39,6 +40,8 @@ enum CameraState: Equatable {
 final class CameraSessionController: NSObject, ObservableObject, @unchecked Sendable {
     @Published private(set) var state: CameraState = .idle
     @Published private(set) var faceDetectionResult = FaceDetectionResult.empty
+    @Published private(set) var faceCaptureState: FaceCaptureState = .searching
+    @Published private(set) var capturedFace: CapturedFaceFrame?
 
     let session = AVCaptureSession()
 
@@ -47,6 +50,9 @@ final class CameraSessionController: NSObject, ObservableObject, @unchecked Send
     private let videoOutput = AVCaptureVideoDataOutput()
     private let frameSampler: CameraFrameSampler
     private let faceDetector = VisionFaceDetector()
+    private let imageContext = CIContext(options: [.cacheIntermediates: false])
+    private var faceCaptureGate = FaceCaptureGate()
+    private var faceCaptureIsComplete = false
 
     private var currentInput: AVCaptureDeviceInput?
     private var deviceConnectionObservation: NSKeyValueObservation?
@@ -91,6 +97,7 @@ final class CameraSessionController: NSObject, ObservableObject, @unchecked Send
     }
 
     func start() {
+        resetFaceCapture()
         sessionQueue.async { [weak self] in
             self?.shouldRun = true
         }
@@ -116,6 +123,7 @@ final class CameraSessionController: NSObject, ObservableObject, @unchecked Send
     }
 
     func stop() {
+        resetFaceCapture()
         sessionQueue.async { [weak self] in
             guard let self else { return }
             self.shouldRun = false
@@ -126,6 +134,10 @@ final class CameraSessionController: NSObject, ObservableObject, @unchecked Send
             }
             self.publish(.idle)
         }
+    }
+
+    func retakeFace() {
+        resetFaceCapture()
     }
 
     private func startAuthorizedCamera() {
@@ -518,6 +530,7 @@ extension CameraSessionController: AVCaptureVideoDataOutputSampleBufferDelegate 
 
         // The preview layer renders directly from the capture session. Throttle only
         // the frames handed to analysis so detector work cannot reduce preview FPS.
+        guard !faceCaptureIsComplete else { return }
         guard frameSampler.shouldSample(at: ProcessInfo.processInfo.systemUptime) else {
             return
         }
@@ -525,17 +538,77 @@ extension CameraSessionController: AVCaptureVideoDataOutputSampleBufferDelegate 
         do {
             let faces = try faceDetector.detectFaces(in: sampleBuffer)
             publishFaceDetection(FaceDetectionResult(faces: faces, errorDescription: nil))
+            evaluateFaceCapture(faces: faces, sampleBuffer: sampleBuffer)
         } catch {
             CameraDiagnostics.faceDetectionFailed(error)
             publishFaceDetection(
                 FaceDetectionResult(faces: [], errorDescription: error.localizedDescription)
             )
+            faceCaptureGate.reset()
+            faceCaptureIsComplete = false
+            publishFaceCapture(state: .rejected(.detectorUnavailable), capture: nil)
         }
     }
 
     private func publishFaceDetection(_ result: FaceDetectionResult) {
         DispatchQueue.main.async { [weak self] in
             self?.faceDetectionResult = result
+        }
+    }
+
+    private func evaluateFaceCapture(
+        faces: [DetectedFace],
+        sampleBuffer: CMSampleBuffer
+    ) {
+        let evaluation = faceCaptureGate.evaluate(
+            faces: faces,
+            at: ProcessInfo.processInfo.systemUptime
+        )
+
+        var capture: CapturedFaceFrame?
+        if let face = evaluation.acceptedFace,
+           let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) {
+            let image = CIImage(cvPixelBuffer: pixelBuffer)
+            if let cgImage = imageContext.createCGImage(image, from: image.extent) {
+                capture = CapturedFaceFrame(
+                    image: cgImage,
+                    face: face,
+                    capturedAt: Date()
+                )
+            } else {
+                faceCaptureGate.reset()
+            }
+        }
+
+        faceCaptureIsComplete = capture != nil
+        let publishedState: FaceCaptureState = capture == nil && evaluation.acceptedFace != nil
+            ? .rejected(.lowQuality)
+            : evaluation.state
+        publishFaceCapture(state: publishedState, capture: capture)
+    }
+
+    private func publishFaceCapture(
+        state: FaceCaptureState,
+        capture: CapturedFaceFrame?
+    ) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.faceCaptureState = state
+            if let capture {
+                self.capturedFace = capture
+            }
+        }
+    }
+
+    private func resetFaceCapture() {
+        sampleQueue.async { [weak self] in
+            guard let self else { return }
+            self.faceCaptureGate.reset()
+            self.faceCaptureIsComplete = false
+            DispatchQueue.main.async { [weak self] in
+                self?.faceCaptureState = .searching
+                self?.capturedFace = nil
+            }
         }
     }
 }

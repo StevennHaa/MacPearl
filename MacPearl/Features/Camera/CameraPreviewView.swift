@@ -10,14 +10,16 @@ import SwiftUI
 struct CameraPreviewView: NSViewRepresentable {
     let session: AVCaptureSession
     let faces: [DetectedFace]
+    let captureState: FaceCaptureState
 
     func makeNSView(context: Context) -> CameraPreviewNSView {
-        CameraPreviewNSView(session: session, faces: faces)
+        CameraPreviewNSView(session: session, faces: faces, captureState: captureState)
     }
 
     func updateNSView(_ nsView: CameraPreviewNSView, context: Context) {
         nsView.session = session
         nsView.faces = faces
+        nsView.captureState = captureState
     }
 }
 
@@ -29,12 +31,16 @@ final class CameraPreviewNSView: NSView {
         didSet { updateFaceOverlay() }
     }
 
+    var captureState: FaceCaptureState = .searching {
+        didSet { updateOverlayColor() }
+    }
+
     var session: AVCaptureSession? {
         get { previewLayer.session }
         set { previewLayer.session = newValue }
     }
 
-    init(session: AVCaptureSession, faces: [DetectedFace]) {
+    init(session: AVCaptureSession, faces: [DetectedFace], captureState: FaceCaptureState) {
         super.init(frame: .zero)
 
         wantsLayer = true
@@ -48,6 +54,8 @@ final class CameraPreviewNSView: NSView {
         faceOverlayLayer.masksToBounds = true
         layer?.addSublayer(faceOverlayLayer)
         self.faces = faces
+        self.captureState = captureState
+        updateOverlayColor()
     }
 
     @available(*, unavailable)
@@ -96,5 +104,15 @@ final class CameraPreviewNSView: NSView {
         CATransaction.setDisableActions(true)
         faceOverlayLayer.path = path
         CATransaction.commit()
+    }
+
+    private func updateOverlayColor() {
+        let color: NSColor
+        switch captureState {
+        case .accepted, .holding: color = .systemGreen
+        case .rejected: color = .systemOrange
+        case .searching: color = .systemYellow
+        }
+        faceOverlayLayer.strokeColor = color.cgColor
     }
 }
