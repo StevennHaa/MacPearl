@@ -28,6 +28,12 @@ final class EnrollmentController: ObservableObject {
 
     private var model: (any FaceEmbeddingModel)?
     private var embeddings: [FaceCapturePose: FaceEmbedding] = [:]
+    private let templateStore: any FaceTemplateStoring
+
+    init(templateStore: (any FaceTemplateStoring)? = nil) {
+        self.templateStore = templateStore ?? KeychainFaceTemplateStore()
+        restoreTemplate()
+    }
 
     var template: UserFaceTemplate? {
         guard case .enrolled(let template) = state else { return nil }
@@ -71,6 +77,7 @@ final class EnrollmentController: ObservableObject {
                     model: model.metadata,
                     embeddings: embeddings
                 )
+                try templateStore.save(template)
                 state = .enrolled(template)
                 camera.finishEnrollmentCapture()
             }
@@ -84,6 +91,16 @@ final class EnrollmentController: ObservableObject {
         embeddings.removeAll()
         state = .idle
         camera.retakeFace()
+    }
+
+    private func restoreTemplate() {
+        do {
+            if let template = try templateStore.load() {
+                state = .enrolled(template)
+            }
+        } catch {
+            state = .failed(error.localizedDescription)
+        }
     }
 
     private static func loadModel() throws -> CoreMLFaceEmbeddingModel {
