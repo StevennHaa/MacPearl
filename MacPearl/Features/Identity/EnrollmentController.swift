@@ -4,13 +4,13 @@
 //
 
 import Combine
-import CoreGraphics
 import Foundation
 
 struct UserFaceTemplate: Equatable, Sendable {
     let id: UUID
     let createdAt: Date
     let model: FaceEmbeddingModelMetadata
+    let preprocessingVersion: String
     let embeddings: [FaceCapturePose: FaceEmbedding]
 }
 
@@ -29,6 +29,7 @@ final class EnrollmentController: ObservableObject {
     private var model: (any FaceEmbeddingModel)?
     private var embeddings: [FaceCapturePose: FaceEmbedding] = [:]
     private let templateStore: any FaceTemplateStoring
+    private var enrollmentID = UUID()
 
     init(templateStore: (any FaceTemplateStoring)? = nil) {
         self.templateStore = templateStore ?? KeychainFaceTemplateStore()
@@ -49,7 +50,8 @@ final class EnrollmentController: ObservableObject {
 
     func begin(using camera: CameraSessionController) {
         do {
-            model = try Self.loadModel()
+            enrollmentID = UUID()
+            model = try FaceEmbeddingModelProvider.load()
             embeddings.removeAll(keepingCapacity: true)
             state = .capturing(pose: .forward, completed: 0)
             camera.captureEnrollmentPose(.forward)
@@ -62,35 +64,54 @@ final class EnrollmentController: ObservableObject {
         guard case .capturing(let pose, let completed) = state,
               let model else { return }
 
+        let requestID = enrollmentID
         state = .processing(pose: pose, completed: completed)
-        do {
-            let faceImage = try frame.croppedFaceImage()
-            embeddings[pose] = try model.embedding(for: faceImage)
-
-            if let nextPose = FaceCapturePose.allCases.first(where: { embeddings[$0] == nil }) {
-                state = .capturing(pose: nextPose, completed: embeddings.count)
-                camera.captureEnrollmentPose(nextPose)
-            } else {
-                let template = UserFaceTemplate(
-                    id: UUID(),
-                    createdAt: Date(),
-                    model: model.metadata,
-                    embeddings: embeddings
-                )
-                try templateStore.save(template)
-                state = .enrolled(template)
-                camera.finishEnrollmentCapture()
+        Task { [weak self] in
+            do {
+                let embedding = try await Task.detached(priority: .userInitiated) {
+                    let faceImage = try FaceImagePreprocessor.alignedImage(from: frame)
+                    return try model.embedding(for: faceImage)
+                }.value
+                guard let self, self.enrollmentID == requestID else { return }
+                try self.accept(embedding, for: pose, using: camera)
+            } catch {
+                guard let self, self.enrollmentID == requestID else { return }
+                self.state = .failed(error.localizedDescription)
+                camera.finishFaceCapture()
             }
-        } catch {
-            state = .failed(error.localizedDescription)
-            camera.finishEnrollmentCapture()
         }
     }
 
     func cancel(using camera: CameraSessionController) {
+        enrollmentID = UUID()
         embeddings.removeAll()
         state = .idle
         camera.retakeFace()
+    }
+
+    private func accept(
+        _ embedding: FaceEmbedding,
+        for pose: FaceCapturePose,
+        using camera: CameraSessionController
+    ) throws {
+        embeddings[pose] = embedding
+        if let nextPose = FaceCapturePose.allCases.first(where: { embeddings[$0] == nil }) {
+            state = .capturing(pose: nextPose, completed: embeddings.count)
+            camera.captureEnrollmentPose(nextPose)
+            return
+        }
+
+        guard let model else { throw EnrollmentError.missingModel }
+        let template = UserFaceTemplate(
+            id: UUID(),
+            createdAt: Date(),
+            model: model.metadata,
+            preprocessingVersion: FaceImagePreprocessor.version,
+            embeddings: embeddings
+        )
+        try templateStore.save(template)
+        state = .enrolled(template)
+        camera.finishFaceCapture()
     }
 
     private func restoreTemplate() {
@@ -98,61 +119,18 @@ final class EnrollmentController: ObservableObject {
             if let template = try templateStore.load() {
                 state = .enrolled(template)
             }
+        } catch FaceTemplateStoreError.unsupportedVersion(1) {
+            state = .failed("The stored template uses older face preprocessing. Enroll again to continue.")
         } catch {
             state = .failed(error.localizedDescription)
         }
-    }
-
-    private static func loadModel() throws -> CoreMLFaceEmbeddingModel {
-        guard let modelURL = Bundle.main.url(
-            forResource: "InsightFaceMobileFaceNet",
-            withExtension: "mlmodelc"
-        ) else {
-            throw EnrollmentError.missingModel
-        }
-
-        return try CoreMLFaceEmbeddingModel(
-            compiledModelURL: modelURL,
-            metadata: FaceEmbeddingModelMetadata(
-                name: "InsightFace MobileFaceNet",
-                version: "buffalo_s v0.7 / w600k_mbf",
-                license: "Non-commercial research only",
-                source: URL(string: "https://github.com/deepinsight/insightface")!
-            )
-        )
-    }
-}
-
-private extension CapturedFaceFrame {
-    func croppedFaceImage(padding: CGFloat = 0.30) throws -> CGImage {
-        let imageWidth = CGFloat(image.width)
-        let imageHeight = CGFloat(image.height)
-        let box = face.boundingBox
-        let side = max(box.width * imageWidth, box.height * imageHeight) * (1 + padding)
-        let centerX = box.midX * imageWidth
-        let centerY = (1 - box.midY) * imageHeight
-        let cropRect = CGRect(
-            x: centerX - (side / 2),
-            y: centerY - (side / 2),
-            width: side,
-            height: side
-        ).integral.intersection(CGRect(x: 0, y: 0, width: imageWidth, height: imageHeight))
-
-        guard !cropRect.isEmpty, let cropped = image.cropping(to: cropRect) else {
-            throw EnrollmentError.invalidFaceCrop
-        }
-        return cropped
     }
 }
 
 private enum EnrollmentError: LocalizedError {
     case missingModel
-    case invalidFaceCrop
 
     var errorDescription: String? {
-        switch self {
-        case .missingModel: "The face embedding model is unavailable."
-        case .invalidFaceCrop: "The accepted face could not be cropped for enrollment."
-        }
+        "The face embedding model is unavailable."
     }
 }

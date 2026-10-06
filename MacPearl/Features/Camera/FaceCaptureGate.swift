@@ -66,7 +66,7 @@ struct FaceCapturePolicy: Equatable, Sendable {
     let minimumCaptureQuality: Float
     let minimumLandmarkConfidence: Float
     let pose: FaceCapturePose
-    let requiredPose: FacePoseTarget
+    let requiredPose: FacePoseTarget?
     let holdDuration: TimeInterval
 
     static let balanced = FaceCapturePolicy(
@@ -80,6 +80,22 @@ struct FaceCapturePolicy: Equatable, Sendable {
         pose: .forward,
         requiredPose: .forward,
         holdDuration: 0.75
+    )
+
+    static let recognition = FaceCapturePolicy(
+        minimumDetectionConfidence: 0.80,
+        minimumFaceWidth: 0.22,
+        minimumFaceHeight: 0.28,
+        maximumHorizontalCenterOffset: 0.12,
+        maximumVerticalCenterOffset: 0.15,
+        minimumCaptureQuality: 0.45,
+        minimumLandmarkConfidence: 0.50,
+        pose: .forward,
+        requiredPose: .forward,
+        // Recognition already requires three independently matched frames. A short
+        // hold filters transient motion without paying the enrollment-sized delay
+        // before every sample.
+        holdDuration: 0.10
     )
 
     static func enrollment(_ pose: FaceCapturePose) -> FaceCapturePolicy {
@@ -213,13 +229,15 @@ struct FaceCaptureGate: Sendable {
             return .offCenter
         }
 
-        guard let yaw = face.yaw,
-              let pitch = face.pitch,
-              let roll = face.roll,
-              policy.requiredPose.yawRange.contains(yaw),
-              policy.requiredPose.pitchRange.contains(pitch),
-              policy.requiredPose.rollRange.contains(roll) else {
-            return .wrongPose(policy.pose)
+        if let requiredPose = policy.requiredPose {
+            guard let yaw = face.yaw,
+                  let pitch = face.pitch,
+                  let roll = face.roll,
+                  requiredPose.yawRange.contains(yaw),
+                  requiredPose.pitchRange.contains(pitch),
+                  requiredPose.rollRange.contains(roll) else {
+                return .wrongPose(policy.pose)
+            }
         }
 
         guard face.hasRequiredLandmarks,

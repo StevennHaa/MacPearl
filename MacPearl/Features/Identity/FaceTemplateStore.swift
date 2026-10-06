@@ -60,7 +60,7 @@ final class KeychainFaceTemplateStore: FaceTemplateStoring, @unchecked Sendable 
 }
 
 struct FaceTemplateCodec: Sendable {
-    static let schemaVersion = 1
+    static let schemaVersion = 2
     static let embeddingDimension = 512
 
     func encode(_ template: UserFaceTemplate) throws -> Data {
@@ -69,6 +69,7 @@ struct FaceTemplateCodec: Sendable {
             schemaVersion: Self.schemaVersion,
             id: template.id,
             createdAt: template.createdAt,
+            preprocessingVersion: template.preprocessingVersion,
             model: StoredModelMetadata(template.model),
             embeddings: Dictionary(
                 uniqueKeysWithValues: template.embeddings.map { ($0.key.rawValue, $0.value.values) }
@@ -78,15 +79,21 @@ struct FaceTemplateCodec: Sendable {
     }
 
     func decode(_ data: Data) throws -> UserFaceTemplate {
+        let version: StoredSchemaVersion
+        do {
+            version = try JSONDecoder().decode(StoredSchemaVersion.self, from: data)
+        } catch {
+            throw FaceTemplateStoreError.corruptTemplate
+        }
+        guard version.schemaVersion == Self.schemaVersion else {
+            throw FaceTemplateStoreError.unsupportedVersion(version.schemaVersion)
+        }
+
         let stored: StoredFaceTemplate
         do {
             stored = try JSONDecoder().decode(StoredFaceTemplate.self, from: data)
         } catch {
             throw FaceTemplateStoreError.corruptTemplate
-        }
-
-        guard stored.schemaVersion == Self.schemaVersion else {
-            throw FaceTemplateStoreError.unsupportedVersion(stored.schemaVersion)
         }
 
         do {
@@ -102,6 +109,7 @@ struct FaceTemplateCodec: Sendable {
                 id: stored.id,
                 createdAt: stored.createdAt,
                 model: try stored.model.value(),
+                preprocessingVersion: stored.preprocessingVersion,
                 embeddings: embeddings
             )
             try validate(template)
@@ -119,7 +127,8 @@ struct FaceTemplateCodec: Sendable {
               template.embeddings.values.allSatisfy({ $0.values.count == Self.embeddingDimension }),
               !template.model.name.isEmpty,
               !template.model.version.isEmpty,
-              !template.model.license.isEmpty else {
+              !template.model.license.isEmpty,
+              template.preprocessingVersion == FaceImagePreprocessor.version else {
             throw FaceTemplateStoreError.corruptTemplate
         }
     }
@@ -142,10 +151,15 @@ enum FaceTemplateStoreError: LocalizedError, Equatable {
     }
 }
 
+private struct StoredSchemaVersion: Codable {
+    let schemaVersion: Int
+}
+
 private struct StoredFaceTemplate: Codable {
     let schemaVersion: Int
     let id: UUID
     let createdAt: Date
+    let preprocessingVersion: String
     let model: StoredModelMetadata
     let embeddings: [String: [Float]]
 }

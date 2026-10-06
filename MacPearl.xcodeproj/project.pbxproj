@@ -8,6 +8,7 @@
 
 /* Begin PBXFileReference section */
 		71E967F9306C452F005F1680 /* MacPearl.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MacPearl.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A40000000000000000000001 /* MacPearlTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MacPearlTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -16,13 +17,35 @@
 			path = MacPearl;
 			sourceTree = "<group>";
 		};
+		A40000000000000000000002 /* MacPearlTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = MacPearlTests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXContainerItemProxy section */
+		A4000000000000000000000A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 71E967F1306C452F005F1680 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 71E967F8306C452F005F1680;
+			remoteInfo = MacPearl;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		71E967F6306C452F005F1680 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
 			);
+		};
+		A40000000000000000000003 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
@@ -31,6 +54,7 @@
 			isa = PBXGroup;
 			children = (
 				71E967FB306C452F005F1680 /* MacPearl */,
+				A40000000000000000000002 /* MacPearlTests */,
 				71E967FA306C452F005F1680 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -39,6 +63,7 @@
 			isa = PBXGroup;
 			children = (
 				71E967F9306C452F005F1680 /* MacPearl.app */,
+				A40000000000000000000001 /* MacPearlTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -64,6 +89,27 @@
 			productReference = 71E967F9306C452F005F1680 /* MacPearl.app */;
 			productType = "com.apple.product-type.application";
 		};
+		A40000000000000000000006 /* MacPearlTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A40000000000000000000007 /* Build configuration list for PBXNativeTarget "MacPearlTests" */;
+			buildPhases = (
+				A40000000000000000000004 /* Sources */,
+				A40000000000000000000003 /* Frameworks */,
+				A40000000000000000000005 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A4000000000000000000000B /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				A40000000000000000000002 /* MacPearlTests */,
+			);
+			name = MacPearlTests;
+			productName = MacPearlTests;
+			productReference = A40000000000000000000001 /* MacPearlTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -76,6 +122,10 @@
 				TargetAttributes = {
 					71E967F8306C452F005F1680 = {
 						CreatedOnToolsVersion = 27.0;
+					};
+					A40000000000000000000006 = {
+						CreatedOnToolsVersion = 27.0;
+						TestTargetID = 71E967F8306C452F005F1680;
 					};
 				};
 			};
@@ -94,6 +144,7 @@
 			projectRoot = "";
 			targets = (
 				71E967F8306C452F005F1680 /* MacPearl */,
+				A40000000000000000000006 /* MacPearlTests */,
 			);
 		};
 /* End PBXProject section */
@@ -104,6 +155,13 @@
 			files = (
 			);
 		};
+		A40000000000000000000005 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -112,7 +170,22 @@
 			files = (
 			);
 		};
+		A40000000000000000000004 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A4000000000000000000000B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 71E967F8306C452F005F1680 /* MacPearl */;
+			targetProxy = A4000000000000000000000A /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		71E96802306C4532005F1680 /* Debug configuration for PBXProject "MacPearl" */ = {
@@ -297,6 +370,38 @@
 			};
 			name = Release;
 		};
+		A40000000000000000000008 /* Debug configuration for PBXNativeTarget "MacPearlTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.stevenha.MacPearlTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MacPearl.app/Contents/MacOS/MacPearl";
+			};
+			name = Debug;
+		};
+		A40000000000000000000009 /* Release configuration for PBXNativeTarget "MacPearlTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.stevenha.MacPearlTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MacPearl.app/Contents/MacOS/MacPearl";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -314,6 +419,15 @@
 				71E96805306C4532005F1680 /* Debug configuration for PBXNativeTarget "MacPearl" */,
 				71E96806306C4532005F1680 /* Release configuration for PBXNativeTarget "MacPearl" */,
 			);
+			defaultConfigurationName = Release;
+		};
+		A40000000000000000000007 /* Build configuration list for PBXNativeTarget "MacPearlTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A40000000000000000000008 /* Debug configuration for PBXNativeTarget "MacPearlTests" */,
+				A40000000000000000000009 /* Release configuration for PBXNativeTarget "MacPearlTests" */,
+			);
+			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */

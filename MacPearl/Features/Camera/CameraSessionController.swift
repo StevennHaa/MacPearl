@@ -144,7 +144,11 @@ final class CameraSessionController: NSObject, ObservableObject, @unchecked Send
         resetFaceCapture(policy: .enrollment(pose))
     }
 
-    func finishEnrollmentCapture() {
+    func captureRecognitionSample() {
+        resetFaceCapture(policy: .recognition)
+    }
+
+    func finishFaceCapture() {
         sampleQueue.async { [weak self] in
             guard let self else { return }
             self.faceCaptureIsComplete = true
@@ -544,23 +548,28 @@ extension CameraSessionController: AVCaptureVideoDataOutputSampleBufferDelegate 
 
         // The preview layer renders directly from the capture session. Throttle only
         // the frames handed to analysis so detector work cannot reduce preview FPS.
-        guard !faceCaptureIsComplete else { return }
         guard frameSampler.shouldSample(at: ProcessInfo.processInfo.systemUptime) else {
             return
         }
 
         do {
-            let faces = try faceDetector.detectFaces(in: sampleBuffer)
+            let captureIsComplete = faceCaptureIsComplete
+            let faces = try faceDetector.detectFaces(
+                in: sampleBuffer,
+                includeCaptureDetails: !captureIsComplete
+            )
             publishFaceDetection(FaceDetectionResult(faces: faces, errorDescription: nil))
+            guard !captureIsComplete else { return }
             evaluateFaceCapture(faces: faces, sampleBuffer: sampleBuffer)
         } catch {
             CameraDiagnostics.faceDetectionFailed(error)
             publishFaceDetection(
                 FaceDetectionResult(faces: [], errorDescription: error.localizedDescription)
             )
-            faceCaptureGate.reset()
-            faceCaptureIsComplete = false
-            publishFaceCapture(state: .rejected(.detectorUnavailable), capture: nil)
+            if !faceCaptureIsComplete {
+                faceCaptureGate.reset()
+                publishFaceCapture(state: .rejected(.detectorUnavailable), capture: nil)
+            }
         }
     }
 
