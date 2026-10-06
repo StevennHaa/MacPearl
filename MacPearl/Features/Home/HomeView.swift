@@ -10,6 +10,7 @@ import SwiftUI
 struct HomeView: View {
     @StateObject private var camera = CameraSessionController()
     @StateObject private var enrollment = EnrollmentController()
+    @StateObject private var recognition = RecognitionController()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -17,8 +18,7 @@ struct HomeView: View {
                 Text("MacPearl")
                     .font(.title)
                     .fontWeight(.semibold)
-
-                Text("Live camera preview")
+                Text(recognition.isActive ? "In-app lock demo" : "Live camera preview")
                     .foregroundStyle(.secondary)
             }
 
@@ -28,10 +28,12 @@ struct HomeView: View {
                     faces: camera.state == .running ? camera.faceDetectionResult.faces : [],
                     captureState: camera.faceCaptureState
                 )
-                    .background(.black)
+                .background(.black)
 
                 if camera.state != .running {
                     cameraStatus
+                } else if case .unlocked = recognition.state {
+                    unlockedOverlay
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: 16))
@@ -43,20 +45,22 @@ struct HomeView: View {
             HStack {
                 Label(statusMessage, systemImage: statusSymbol)
                     .foregroundStyle(statusColor)
-
                 Spacer()
-
-                if camera.state == .running {
-                    if camera.capturedFace != nil, !enrollment.isActive {
-                        Button("Retake") { camera.retakeFace() }
-                    } else if case .holding(let progress) = camera.faceCaptureState {
-                        ProgressView(value: progress)
-                            .frame(width: 100)
-                    }
+                if camera.state == .running,
+                   case .holding(let progress) = camera.faceCaptureState,
+                   !recognition.isActive {
+                    ProgressView(value: progress)
+                        .frame(width: 100)
                 }
             }
 
-            enrollmentControls
+            primaryControls
+
+#if DEBUG
+            if recognition.isActive {
+                recognitionDiagnostics
+            }
+#endif
         }
         .padding(24)
         .frame(minWidth: 680, minHeight: 520)
@@ -64,7 +68,63 @@ struct HomeView: View {
         .onDisappear { camera.stop() }
         .onReceive(camera.$capturedFace) { frame in
             guard let frame else { return }
-            enrollment.receive(frame, using: camera)
+            if recognition.isLocked {
+                recognition.receive(frame, using: camera)
+            } else {
+                enrollment.receive(frame, using: camera)
+            }
+        }
+        .onReceive(camera.$faceDetectionResult) { result in
+            recognition.updateFacePresence(!result.faces.isEmpty, using: camera)
+        }
+    }
+
+    @ViewBuilder
+    private var primaryControls: some View {
+        if recognition.isActive {
+            recognitionControls
+        } else {
+            enrollmentControls
+        }
+    }
+
+    @ViewBuilder
+    private var recognitionControls: some View {
+        HStack(spacing: 12) {
+            switch recognition.state {
+            case .idle:
+                EmptyView()
+            case .scanning(let matches, _):
+                Label("Locked — verifying " + String(matches) + " of 3", systemImage: "lock.fill")
+                Spacer()
+                Button("Cancel Demo") { recognition.cancel(using: camera) }
+            case .processing:
+                ProgressView().controlSize(.small)
+                Text("Comparing face…")
+                Spacer()
+                Button("Cancel Demo") { recognition.cancel(using: camera) }
+            case .cooldown(let until):
+                Label("Too many failed samples — pausing briefly", systemImage: "clock.badge.exclamationmark")
+                    .foregroundStyle(.orange)
+                Spacer()
+                Text(until, style: .timer).monospacedDigit()
+                Button("Cancel Demo") { recognition.cancel(using: camera) }
+            case .unlocked:
+                Label("Unlocked", systemImage: "lock.open.fill")
+                    .foregroundStyle(.green)
+                Spacer()
+                if let template = enrollment.template {
+                    Button("Lock Again") {
+                        recognition.begin(template: template, using: camera)
+                    }
+                }
+                Button("Exit Demo") { recognition.cancel(using: camera) }
+            case .failed(let message):
+                Label(message, systemImage: "xmark.octagon")
+                    .foregroundStyle(.red)
+                Spacer()
+                Button("Exit Demo") { recognition.cancel(using: camera) }
+            }
         }
     }
 
@@ -75,42 +135,73 @@ struct HomeView: View {
             case .idle:
                 Button("Begin Enrollment") { enrollment.begin(using: camera) }
             case .capturing(let pose, let completed):
-                Label("Step \(completed + 1) of 3: \(pose.instruction)", systemImage: "person.badge.plus")
+                Label("Step " + String(completed + 1) + " of 3: " + pose.instruction, systemImage: "person.badge.plus")
                 Spacer()
                 Button("Cancel") { enrollment.cancel(using: camera) }
             case .processing(_, let completed):
-                ProgressView()
-                    .controlSize(.small)
-                Text("Processing sample \(completed + 1) of 3…")
+                ProgressView().controlSize(.small)
+                Text("Processing sample " + String(completed + 1) + " of 3…")
                 Spacer()
                 Button("Cancel") { enrollment.cancel(using: camera) }
             case .enrolled(let template):
-                Label("Local template ready (\(template.embeddings.count) poses)", systemImage: "checkmark.shield.fill")
+                Label("Local template ready (" + String(template.embeddings.count) + " poses)", systemImage: "checkmark.shield.fill")
                     .foregroundStyle(.green)
+                Spacer()
+                Button("Lock Demo") {
+                    recognition.begin(template: template, using: camera)
+                }
             case .failed(let message):
                 Label(message, systemImage: "xmark.octagon")
                     .foregroundStyle(.red)
                 Spacer()
-                Button("Try Again") { enrollment.begin(using: camera) }
+                Button("Enroll Again") { enrollment.begin(using: camera) }
                 Button("Cancel") { enrollment.cancel(using: camera) }
             }
         }
     }
 
+#if DEBUG
+    private var recognitionDiagnostics: some View {
+        let diagnostics = recognition.diagnostics
+        let score = diagnostics.score.map { String(format: "%.3f", $0) } ?? "—"
+        let threshold = String(format: "%.2f", diagnostics.threshold)
+        let latency = diagnostics.latencyMilliseconds.map { String(format: "%.0f ms", $0) } ?? "—"
+        return HStack(spacing: 18) {
+            Label("Development diagnostics", systemImage: "wrench.and.screwdriver")
+                .fontWeight(.medium)
+            Text("Score: " + score)
+            Text("Threshold: " + threshold)
+            Text("Window: " + String(diagnostics.matches) + "/" + String(diagnostics.samples))
+            Text("Latency: " + latency)
+        }
+        .font(.caption.monospacedDigit())
+        .foregroundStyle(.secondary)
+        .padding(10)
+        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
+    }
+#endif
+
+    private var unlockedOverlay: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "lock.open.fill")
+                .font(.system(size: 44))
+            Text("MacPearl Unlocked")
+                .font(.title2.bold())
+        }
+        .padding(28)
+        .foregroundStyle(.white)
+        .background(.green.opacity(0.85), in: RoundedRectangle(cornerRadius: 16))
+    }
+
     @ViewBuilder
     private var cameraStatus: some View {
         VStack(spacing: 12) {
-            Image(systemName: "video.slash")
-                .font(.system(size: 36))
-
+            Image(systemName: "video.slash").font(.system(size: 36))
             Text(camera.state.message)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 360)
-
             if shouldOfferRetry {
-                Button("Try Again") {
-                    camera.start()
-                }
+                Button("Try Again") { camera.start() }
             } else {
                 ProgressView()
             }
@@ -120,6 +211,8 @@ struct HomeView: View {
     }
 
     private var statusSymbol: String {
+        if case .unlocked = recognition.state { return "lock.open.fill" }
+        if recognition.isLocked { return "lock.fill" }
         guard camera.state == .running else { return "video" }
         switch camera.faceCaptureState {
         case .accepted: return "checkmark.circle.fill"
@@ -131,15 +224,21 @@ struct HomeView: View {
 
     private var shouldOfferRetry: Bool {
         switch camera.state {
-        case .unauthorized, .unavailable, .failed:
-            true
-        default:
-            false
+        case .unauthorized, .unavailable, .failed: true
+        default: false
         }
     }
 
     private var statusMessage: String {
         guard camera.state == .running else { return camera.state.message }
+        switch recognition.state {
+        case .scanning: return "Position your face to unlock"
+        case .processing: return "Checking identity…"
+        case .cooldown: return "Recognition paused briefly"
+        case .unlocked: return "Stable match confirmed"
+        case .failed(let message): return message
+        case .idle: break
+        }
         switch enrollment.state {
         case .capturing(let pose, _): return pose.instruction
         case .processing: return "Creating face embedding…"
@@ -147,7 +246,6 @@ struct HomeView: View {
         case .failed(let message): return message
         case .idle: break
         }
-        if camera.capturedFace != nil { return "Face captured — ready to continue" }
         switch camera.faceCaptureState {
         case .searching: return "Position your face in the camera"
         case .rejected(let issue): return issue.message
@@ -157,8 +255,9 @@ struct HomeView: View {
     }
 
     private var statusColor: Color {
+        if case .unlocked = recognition.state { return .green }
+        if case .cooldown = recognition.state { return .orange }
         guard camera.state == .running else { return .secondary }
-        if camera.capturedFace != nil { return .green }
         if case .rejected = camera.faceCaptureState { return .orange }
         return .green
     }

@@ -8,7 +8,7 @@ import Foundation
 struct FaceEmbedding: Equatable, Sendable {
     let values: [Float]
 
-    init(values: [Float]) throws {
+    nonisolated init(values: [Float]) throws {
         guard !values.isEmpty else { throw FaceEmbeddingError.emptyVector }
         guard values.allSatisfy(\.isFinite) else { throw FaceEmbeddingError.nonFiniteValue }
 
@@ -17,7 +17,7 @@ struct FaceEmbedding: Equatable, Sendable {
         self.values = values.map { $0 / magnitude }
     }
 
-    func cosineSimilarity(to other: FaceEmbedding) throws -> Float {
+    nonisolated func cosineSimilarity(to other: FaceEmbedding) throws -> Float {
         guard values.count == other.values.count else {
             throw FaceEmbeddingError.dimensionMismatch(values.count, other.values.count)
         }

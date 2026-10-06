@@ -19,14 +19,14 @@ protocol FaceEmbeddingModel: Sendable {
     var metadata: FaceEmbeddingModelMetadata { get }
     var onDiskSize: Int64 { get }
 
-    func embedding(for image: CGImage) throws -> FaceEmbedding
+    nonisolated func embedding(for image: CGImage) throws -> FaceEmbedding
 }
 
 final class CoreMLFaceEmbeddingModel: FaceEmbeddingModel, @unchecked Sendable {
     let metadata: FaceEmbeddingModelMetadata
     let onDiskSize: Int64
 
-    private let visionModel: VNCoreMLModel
+    nonisolated(unsafe) private let visionModel: VNCoreMLModel
     private let cropAndScaleOption: VNImageCropAndScaleOption
 
     init(
@@ -45,7 +45,7 @@ final class CoreMLFaceEmbeddingModel: FaceEmbeddingModel, @unchecked Sendable {
         self.cropAndScaleOption = cropAndScaleOption
     }
 
-    func embedding(for image: CGImage) throws -> FaceEmbedding {
+    nonisolated func embedding(for image: CGImage) throws -> FaceEmbedding {
         let request = VNCoreMLRequest(model: visionModel)
         request.imageCropAndScaleOption = cropAndScaleOption
 
@@ -61,7 +61,7 @@ final class CoreMLFaceEmbeddingModel: FaceEmbeddingModel, @unchecked Sendable {
         return try FaceEmbedding(values: values)
     }
 
-    private static func directorySize(at url: URL) throws -> Int64 {
+    nonisolated private static func directorySize(at url: URL) throws -> Int64 {
         let resourceValues = try url.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey])
         guard resourceValues.isDirectory == true else {
             return Int64(resourceValues.fileSize ?? 0)
