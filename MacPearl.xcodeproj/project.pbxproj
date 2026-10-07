@@ -525,11 +525,13 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "MacPearl Authorization Plugin";
 				INFOPLIST_KEY_CFBundlePackageType = BNDL;
+				INFOPLIST_KEY_NSCameraUsageDescription = "MacPearl checks whether the camera can provide a frame at the lock screen.";
 				INSTALL_PATH = /Library/Security/SecurityAgentPlugins;
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.stevenha.MacPearl.AuthorizationPlugin;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				OTHER_LDFLAGS = ("$(inherited)", "-framework", AVFoundation);
 				SKIP_INSTALL = YES;
 			};
 			name = Debug;
@@ -547,11 +549,13 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "MacPearl Authorization Plugin";
 				INFOPLIST_KEY_CFBundlePackageType = BNDL;
+				INFOPLIST_KEY_NSCameraUsageDescription = "MacPearl checks whether the camera can provide a frame at the lock screen.";
 				INSTALL_PATH = /Library/Security/SecurityAgentPlugins;
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.stevenha.MacPearl.AuthorizationPlugin;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				OTHER_LDFLAGS = ("$(inherited)", "-framework", AVFoundation);
 				SKIP_INSTALL = YES;
 			};
 			name = Release;
@@ -565,6 +569,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/MacPearlAuthorizationPlugin";
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				OTHER_LDFLAGS = ("$(inherited)", "-framework", AVFoundation);
 				PRODUCT_BUNDLE_IDENTIFIER = com.stevenha.MacPearl.AuthorizationPluginTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
@@ -579,6 +584,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/MacPearlAuthorizationPlugin";
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				OTHER_LDFLAGS = ("$(inherited)", "-framework", AVFoundation);
 				PRODUCT_BUNDLE_IDENTIFIER = com.stevenha.MacPearl.AuthorizationPluginTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};

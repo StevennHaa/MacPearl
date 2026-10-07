@@ -8,6 +8,48 @@ typedef struct {
     NSUInteger didDeactivateCount;
 } FakeAuthorizationEngine;
 
+typedef struct {
+    MacPearlCameraProbeCompletion completion;
+    void *context;
+} FakeCameraProbe;
+
+static NSUInteger FakeProbeStartCount;
+static NSUInteger FakeProbeCancelCount;
+static NSUInteger FakeProbeReleaseCount;
+static BOOL FakeProbeCompletesOnStart;
+
+static MacPearlCameraProbeRef FakeProbeCreate(MacPearlCameraProbeCompletion completion, void *context)
+{
+    FakeCameraProbe *probe = calloc(1, sizeof(*probe));
+    probe->completion = completion;
+    probe->context = context;
+    return probe;
+}
+
+static void FakeProbeStart(MacPearlCameraProbeRef reference)
+{
+    FakeProbeStartCount += 1;
+    FakeCameraProbe *probe = reference;
+    if (FakeProbeCompletesOnStart) {
+        MacPearlCameraProbeResult result = {.outcome = MacPearlCameraProbeOutcomeFrameReceived};
+        probe->completion(probe->context, &result);
+    }
+}
+
+static void FakeProbeCancel(MacPearlCameraProbeRef reference)
+{
+    FakeProbeCancelCount += 1;
+    FakeCameraProbe *probe = reference;
+    MacPearlCameraProbeResult result = {.outcome = MacPearlCameraProbeOutcomeCancelled};
+    probe->completion(probe->context, &result);
+}
+
+static void FakeProbeRelease(MacPearlCameraProbeRef reference)
+{
+    FakeProbeReleaseCount += 1;
+    free(reference);
+}
+
 static OSStatus FakeSetResult(
     AuthorizationEngineRef engine,
     AuthorizationResult result
@@ -30,6 +72,28 @@ static OSStatus FakeDidDeactivate(AuthorizationEngineRef engine)
 @end
 
 @implementation MacPearlAuthorizationPluginTests
+
+- (void)setUp
+{
+    [super setUp];
+    FakeProbeStartCount = 0;
+    FakeProbeCancelCount = 0;
+    FakeProbeReleaseCount = 0;
+    FakeProbeCompletesOnStart = NO;
+    MacPearlCameraProbeFunctions functions = {
+        .create = FakeProbeCreate,
+        .start = FakeProbeStart,
+        .cancel = FakeProbeCancel,
+        .release = FakeProbeRelease,
+    };
+    MacPearlAuthorizationPluginSetCameraProbeFunctionsForTesting(&functions);
+}
+
+- (void)tearDown
+{
+    MacPearlAuthorizationPluginSetCameraProbeFunctionsForTesting(NULL);
+    [super tearDown];
+}
 
 - (AuthorizationCallbacks)callbacks
 {
@@ -116,6 +180,46 @@ static OSStatus FakeDidDeactivate(AuthorizationEngineRef engine)
     );
     XCTAssertEqual(mechanism, NULL);
     XCTAssertEqual(fakeEngine.setResultCount, 0u);
+    XCTAssertEqual(interface->PluginDestroy(plugin), errAuthorizationSuccess);
+}
+
+- (void)testCameraProbeAlwaysDeniesAfterReceivingAFrame
+{
+    FakeProbeCompletesOnStart = YES;
+    AuthorizationCallbacks callbacks = [self callbacks];
+    AuthorizationPluginRef plugin = NULL;
+    const AuthorizationPluginInterface *interface = NULL;
+    XCTAssertEqual(AuthorizationPluginCreate(&callbacks, &plugin, &interface), errAuthorizationSuccess);
+    FakeAuthorizationEngine engine = {0};
+    AuthorizationMechanismRef mechanism = NULL;
+    XCTAssertEqual(interface->MechanismCreate(plugin, (AuthorizationEngineRef)&engine, MACPEARL_CAMERA_PROBE_MECHANISM, &mechanism), errAuthorizationSuccess);
+    XCTAssertEqual(interface->MechanismInvoke(mechanism), errAuthorizationSuccess);
+    XCTAssertEqual(interface->MechanismInvoke(mechanism), errAuthorizationSuccess);
+    XCTAssertEqual(FakeProbeStartCount, 1u);
+    XCTAssertEqual(FakeProbeReleaseCount, 1u);
+    XCTAssertEqual(engine.setResultCount, 1u);
+    XCTAssertEqual(engine.lastResult, kAuthorizationResultDeny);
+    XCTAssertEqual(interface->MechanismDestroy(mechanism), errAuthorizationSuccess);
+    XCTAssertEqual(interface->PluginDestroy(plugin), errAuthorizationSuccess);
+}
+
+- (void)testCameraProbeCancellationDeniesAndDeactivatesOnce
+{
+    AuthorizationCallbacks callbacks = [self callbacks];
+    AuthorizationPluginRef plugin = NULL;
+    const AuthorizationPluginInterface *interface = NULL;
+    XCTAssertEqual(AuthorizationPluginCreate(&callbacks, &plugin, &interface), errAuthorizationSuccess);
+    FakeAuthorizationEngine engine = {0};
+    AuthorizationMechanismRef mechanism = NULL;
+    XCTAssertEqual(interface->MechanismCreate(plugin, (AuthorizationEngineRef)&engine, MACPEARL_CAMERA_PROBE_MECHANISM, &mechanism), errAuthorizationSuccess);
+    XCTAssertEqual(interface->MechanismInvoke(mechanism), errAuthorizationSuccess);
+    XCTAssertEqual(interface->MechanismDeactivate(mechanism), errAuthorizationSuccess);
+    XCTAssertEqual(interface->MechanismDeactivate(mechanism), errAuthorizationSuccess);
+    XCTAssertEqual(FakeProbeCancelCount, 1u);
+    XCTAssertEqual(FakeProbeReleaseCount, 1u);
+    XCTAssertEqual(engine.setResultCount, 1u);
+    XCTAssertEqual(engine.didDeactivateCount, 1u);
+    XCTAssertEqual(interface->MechanismDestroy(mechanism), errAuthorizationSuccess);
     XCTAssertEqual(interface->PluginDestroy(plugin), errAuthorizationSuccess);
 }
 
