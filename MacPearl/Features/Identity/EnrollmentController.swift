@@ -121,6 +121,8 @@ final class EnrollmentController: ObservableObject {
             }
         } catch FaceTemplateStoreError.unsupportedVersion(1) {
             state = .failed("The stored template uses older face preprocessing. Enroll again to continue.")
+        } catch FaceTemplateStoreError.incompatiblePreprocessingVersion {
+            state = .failed("Lighting normalization has improved. Enroll again to update your face template.")
         } catch {
             state = .failed(error.localizedDescription)
         }

@@ -17,8 +17,13 @@ struct FaceLandmarks: Equatable, Sendable {
 }
 
 enum FaceImagePreprocessor {
-    nonisolated static let version = "insightface-five-point-v1"
+    nonisolated static let version = "insightface-five-point-illumination-v3"
     nonisolated static let outputSize = CGSize(width: 112, height: 112)
+    nonisolated static let targetLuminance: CGFloat = 0.50
+    nonisolated static let maximumExposureAdjustment: Float = 2.0
+    nonisolated private static let sRGBColorSpace = CGColorSpace(
+        name: CGColorSpace.sRGB
+    )!
     nonisolated private static let renderContext = CIContext(
         options: [.cacheIntermediates: false]
     )
@@ -48,12 +53,79 @@ enum FaceImagePreprocessor {
 
         let transform = try similarityTransform(from: sourcePoints, to: destinationPoints)
         let input = CIImage(cgImage: frame.image)
-        let aligned = input.transformed(by: transform)
         let outputRect = CGRect(origin: .zero, size: outputSize)
-        guard let image = renderContext.createCGImage(aligned, from: outputRect) else {
+        let aligned = input.transformed(by: transform).cropped(to: outputRect)
+        let normalized = try normalizeIllumination(in: aligned)
+        guard let image = renderContext.createCGImage(
+            normalized,
+            from: outputRect,
+            format: .RGBA8,
+            colorSpace: sRGBColorSpace
+        ) else {
             throw FaceImagePreprocessorError.cannotRenderAlignedFace
         }
         return image
+    }
+
+    /// Corrects only broad exposure differences after five-point alignment. The
+    /// bounded adjustment avoids amplifying very dark frames into noisy inputs.
+    nonisolated static func normalizeIllumination(in image: CIImage) throws -> CIImage {
+        let sampleRect = CGRect(x: 24, y: 18, width: 64, height: 76)
+            .intersection(image.extent)
+        guard !sampleRect.isEmpty,
+              let averageFilter = CIFilter(
+                name: "CIAreaAverage",
+                parameters: [
+                    kCIInputImageKey: image,
+                    kCIInputExtentKey: CIVector(cgRect: sampleRect)
+                ]
+              ),
+              let averageImage = averageFilter.outputImage else {
+            throw FaceImagePreprocessorError.cannotNormalizeIllumination
+        }
+
+        var pixel = [UInt8](repeating: 0, count: 4)
+        renderContext.render(
+            averageImage,
+            toBitmap: &pixel,
+            rowBytes: 4,
+            bounds: CGRect(x: 0, y: 0, width: 1, height: 1),
+            format: .RGBA8,
+            colorSpace: sRGBColorSpace
+        )
+
+        let red = linearComponent(fromSRGB: CGFloat(pixel[0]) / 255)
+        let green = linearComponent(fromSRGB: CGFloat(pixel[1]) / 255)
+        let blue = linearComponent(fromSRGB: CGFloat(pixel[2]) / 255)
+        let linearLuminance = (0.2126 * red) + (0.7152 * green) + (0.0722 * blue)
+        let exposure = exposureAdjustment(forLinearLuminance: linearLuminance)
+        return image.applyingFilter(
+            "CIExposureAdjust",
+            parameters: [kCIInputEVKey: exposure]
+        )
+    }
+
+    nonisolated static func exposureAdjustment(forLuminance luminance: CGFloat) -> Float {
+        exposureAdjustment(forLinearLuminance: linearComponent(fromSRGB: luminance))
+    }
+
+    nonisolated private static func exposureAdjustment(
+        forLinearLuminance luminance: CGFloat
+    ) -> Float {
+        guard luminance.isFinite, luminance > .ulpOfOne else {
+            return maximumExposureAdjustment
+        }
+        let linearTarget = linearComponent(fromSRGB: targetLuminance)
+        let adjustment = Float(log2(linearTarget / luminance))
+        return min(max(adjustment, -maximumExposureAdjustment), maximumExposureAdjustment)
+    }
+
+    nonisolated private static func linearComponent(fromSRGB component: CGFloat) -> CGFloat {
+        let clamped = min(max(component, 0), 1)
+        if clamped <= 0.04045 {
+            return clamped / 12.92
+        }
+        return pow((clamped + 0.055) / 1.055, 2.4)
     }
 
     /// Least-squares similarity transform: x' = ax - by + tx, y' = bx + ay + ty.
@@ -102,6 +174,7 @@ enum FaceImagePreprocessor {
 enum FaceImagePreprocessorError: LocalizedError {
     case missingLandmarks
     case invalidLandmarkGeometry
+    case cannotNormalizeIllumination
     case cannotRenderAlignedFace
 
     var errorDescription: String? {
@@ -110,6 +183,8 @@ enum FaceImagePreprocessorError: LocalizedError {
             "The accepted face is missing landmarks required for recognition."
         case .invalidLandmarkGeometry:
             "The detected face landmarks could not be aligned."
+        case .cannotNormalizeIllumination:
+            "The aligned face lighting could not be normalized."
         case .cannotRenderAlignedFace:
             "The aligned face image could not be created."
         }

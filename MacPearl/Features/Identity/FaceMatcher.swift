@@ -43,8 +43,14 @@ struct RecognitionPolicy: Equatable, Sendable {
 }
 
 struct FaceTemplateMatcher: Sendable {
-    let centroid: FaceEmbedding
+    let reference: FaceEmbedding
     let threshold: Float
+
+    private static let poseWeights: [FaceCapturePose: Float] = [
+        .forward: 0.60,
+        .left: 0.20,
+        .right: 0.20
+    ]
 
     init(template: UserFaceTemplate, threshold: Float) throws {
         guard template.preprocessingVersion == FaceImagePreprocessor.version,
@@ -61,15 +67,23 @@ struct FaceTemplateMatcher: Sendable {
         guard ordered.allSatisfy({ $0.values.count == dimension }) else {
             throw RecognitionError.incompleteTemplate
         }
-        let mean = (0..<dimension).map { index in
-            ordered.reduce(Float.zero) { $0 + $1.values[index] } / Float(ordered.count)
+        let orderedWeights = FaceCapturePose.allCases.map {
+            Self.poseWeights[$0, default: 0]
         }
-        centroid = try FaceEmbedding(values: mean)
+        let weightedValues = (0..<dimension).map { index in
+            zip(ordered, orderedWeights).reduce(Float.zero) { partial, item in
+                partial + (item.0.values[index] * item.1)
+            }
+        }
+        reference = try FaceEmbedding(values: weightedValues)
         self.threshold = threshold
     }
 
     func evaluate(_ liveEmbedding: FaceEmbedding) throws -> MatchResult {
-        let score = try liveEmbedding.cosineSimilarity(to: centroid)
+        // Recognition currently accepts a forward pose. Side captures strengthen
+        // the identity template, while the forward capture remains dominant so
+        // profile variation cannot pull the reference too far from the live pose.
+        let score = try liveEmbedding.cosineSimilarity(to: reference)
         return MatchResult(score: score, isMatch: score >= threshold)
     }
 }

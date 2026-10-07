@@ -59,6 +59,8 @@ struct HomeView: View {
 #if DEBUG
             if recognition.isActive {
                 recognitionDiagnostics
+            } else if enrollment.isActive {
+                enrollmentDiagnostics
             }
 #endif
         }
@@ -161,6 +163,22 @@ struct HomeView: View {
     }
 
 #if DEBUG
+    private var enrollmentDiagnostics: some View {
+        let face = camera.faceDetectionResult.faces.first
+        return HStack(spacing: 18) {
+            Label("Development pose", systemImage: "viewfinder")
+                .fontWeight(.medium)
+            Text("Yaw: " + angleDescription(face?.yaw))
+            Text("Pitch: " + angleDescription(face?.pitch))
+            Text("Roll: " + angleDescription(face?.roll))
+            Text("Quality: " + scoreDescription(face?.captureQuality))
+        }
+        .font(.caption.monospacedDigit())
+        .foregroundStyle(.secondary)
+        .padding(10)
+        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
+    }
+
     private var recognitionDiagnostics: some View {
         let diagnostics = recognition.diagnostics
         let score = diagnostics.score.map { String(format: "%.3f", $0) } ?? "—"
@@ -178,6 +196,15 @@ struct HomeView: View {
         .foregroundStyle(.secondary)
         .padding(10)
         .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func angleDescription(_ radians: Double?) -> String {
+        guard let radians else { return "—" }
+        return String(format: "%.1f°", radians * 180 / .pi)
+    }
+
+    private func scoreDescription(_ score: Float?) -> String {
+        score.map { String(format: "%.2f", $0) } ?? "—"
     }
 #endif
 
@@ -232,7 +259,13 @@ struct HomeView: View {
     private var statusMessage: String {
         guard camera.state == .running else { return camera.state.message }
         switch recognition.state {
-        case .scanning: return "Position your face to unlock"
+        case .scanning:
+            if camera.faceDetectionResult.faces.isEmpty {
+                return "Position your face to unlock"
+            }
+            return recognition.diagnostics.score == nil
+                ? "Face detected — hold still"
+                : "Face detected — verifying identity"
         case .processing: return "Checking identity…"
         case .cooldown: return "Recognition paused briefly"
         case .unlocked: return "Stable match confirmed"

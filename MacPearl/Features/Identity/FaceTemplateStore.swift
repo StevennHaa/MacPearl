@@ -127,9 +127,13 @@ struct FaceTemplateCodec: Sendable {
               template.embeddings.values.allSatisfy({ $0.values.count == Self.embeddingDimension }),
               !template.model.name.isEmpty,
               !template.model.version.isEmpty,
-              !template.model.license.isEmpty,
-              template.preprocessingVersion == FaceImagePreprocessor.version else {
+              !template.model.license.isEmpty else {
             throw FaceTemplateStoreError.corruptTemplate
+        }
+        guard template.preprocessingVersion == FaceImagePreprocessor.version else {
+            throw FaceTemplateStoreError.incompatiblePreprocessingVersion(
+                template.preprocessingVersion
+            )
         }
     }
 }
@@ -137,6 +141,7 @@ struct FaceTemplateCodec: Sendable {
 enum FaceTemplateStoreError: LocalizedError, Equatable {
     case corruptTemplate
     case unsupportedVersion(Int)
+    case incompatiblePreprocessingVersion(String)
     case keychain(OSStatus)
 
     var errorDescription: String? {
@@ -145,6 +150,8 @@ enum FaceTemplateStoreError: LocalizedError, Equatable {
             "The stored face template is damaged and was not loaded."
         case .unsupportedVersion(let version):
             "The stored face template uses unsupported version \(version)."
+        case .incompatiblePreprocessingVersion:
+            "The stored face template uses older face preprocessing. Enroll again to continue."
         case .keychain(let status):
             "The face template could not be accessed securely (Keychain error \(status))."
         }
