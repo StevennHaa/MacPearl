@@ -35,6 +35,34 @@
                ReferencedContainer = "container:MacPearl.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "B50000000000000000000006"
+               BuildableName = "MacPearlAuthorizationPlugin.bundle"
+               BlueprintName = "MacPearlAuthorizationPlugin"
+               ReferencedContainer = "container:MacPearl.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "B5000000000000000000000F"
+               BuildableName = "MacPearlAuthorizationPluginTests.xctest"
+               BlueprintName = "MacPearlAuthorizationPluginTests"
+               ReferencedContainer = "container:MacPearl.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction
@@ -52,6 +80,17 @@
                BlueprintIdentifier = "A40000000000000000000006"
                BuildableName = "MacPearlTests.xctest"
                BlueprintName = "MacPearlTests"
+               ReferencedContainer = "container:MacPearl.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "B5000000000000000000000F"
+               BuildableName = "MacPearlAuthorizationPluginTests.xctest"
+               BlueprintName = "MacPearlAuthorizationPluginTests"
                ReferencedContainer = "container:MacPearl.xcodeproj">
             </BuildableReference>
          </TestableReference>

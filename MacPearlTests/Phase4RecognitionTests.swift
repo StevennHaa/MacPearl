@@ -1,22 +1,73 @@
 import CoreGraphics
+import CoreImage
 import XCTest
 @testable import MacPearl
 
 final class Phase4RecognitionTests: XCTestCase {
-    func testMatcherUsesNormalizedThreePoseCentroid() throws {
-        let enrolled = try axisEmbedding(0)
+    func testMatcherUsesForwardWeightedMultiPoseReference() throws {
+        let forward = try axisEmbedding(0)
         let template = UserFaceTemplate(
             id: UUID(),
             createdAt: Date(),
             model: FaceEmbeddingModelProvider.metadata,
             preprocessingVersion: FaceImagePreprocessor.version,
-            embeddings: [.forward: enrolled, .left: enrolled, .right: enrolled]
+            embeddings: [
+                .forward: forward,
+                .left: try axisEmbedding(1),
+                .right: try axisEmbedding(2)
+            ]
         )
-        let matcher = try FaceTemplateMatcher(template: template, threshold: 0.40)
+        let matcher = try FaceTemplateMatcher(template: template, threshold: 0.80)
 
-        XCTAssertEqual(try matcher.evaluate(enrolled).score, 1, accuracy: 0.0001)
-        XCTAssertTrue(try matcher.evaluate(enrolled).isMatch)
+        XCTAssertEqual(try matcher.evaluate(forward).score, 0.9045, accuracy: 0.001)
+        XCTAssertTrue(try matcher.evaluate(forward).isMatch)
         XCTAssertFalse(try matcher.evaluate(axisEmbedding(1)).isMatch)
+    }
+
+    func testIlluminationExposureAdjustmentIsBounded() {
+        XCTAssertEqual(
+            FaceImagePreprocessor.exposureAdjustment(forLuminance: 0.50),
+            0,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            FaceImagePreprocessor.exposureAdjustment(forLuminance: 0.25),
+            2,
+            accuracy: 0.01
+        )
+        XCTAssertEqual(
+            FaceImagePreprocessor.exposureAdjustment(forLuminance: 1.0),
+            -2,
+            accuracy: 0.01
+        )
+        XCTAssertEqual(
+            FaceImagePreprocessor.exposureAdjustment(forLuminance: 0.01),
+            FaceImagePreprocessor.maximumExposureAdjustment,
+            accuracy: 0.001
+        )
+    }
+
+    func testIlluminationNormalizationMovesDarkInputTowardTarget() throws {
+        let input = CIImage(
+            color: CIColor(red: 0.25, green: 0.25, blue: 0.25)
+        ).cropped(to: CGRect(origin: .zero, size: FaceImagePreprocessor.outputSize))
+        let normalized = try FaceImagePreprocessor.normalizeIllumination(in: input)
+
+        var pixel = [UInt8](repeating: 0, count: 4)
+        CIContext().render(
+            normalized,
+            toBitmap: &pixel,
+            rowBytes: 4,
+            bounds: CGRect(x: 56, y: 56, width: 1, height: 1),
+            format: .RGBA8,
+            colorSpace: CGColorSpaceCreateDeviceRGB()
+        )
+
+        XCTAssertEqual(
+            CGFloat(pixel[0]) / 255,
+            FaceImagePreprocessor.targetLuminance,
+            accuracy: 0.03
+        )
     }
 
     func testThreeOfFourMatchesUnlocksDespiteOneMiss() {
@@ -79,6 +130,30 @@ final class Phase4RecognitionTests: XCTestCase {
         }
     }
 
+    func testTemplateCodecRejectsOlderPreprocessingVersion() throws {
+        let embedding = try axisEmbedding(0)
+        let template = UserFaceTemplate(
+            id: UUID(),
+            createdAt: Date(timeIntervalSince1970: 123),
+            model: FaceEmbeddingModelProvider.metadata,
+            preprocessingVersion: FaceImagePreprocessor.version,
+            embeddings: [.forward: embedding, .left: embedding, .right: embedding]
+        )
+        let codec = FaceTemplateCodec()
+        let currentJSON = String(decoding: try codec.encode(template), as: UTF8.self)
+        let oldJSON = currentJSON.replacingOccurrences(
+            of: FaceImagePreprocessor.version,
+            with: "insightface-five-point-v1"
+        )
+
+        XCTAssertThrowsError(try codec.decode(Data(oldJSON.utf8))) { error in
+            XCTAssertEqual(
+                error as? FaceTemplateStoreError,
+                .incompatiblePreprocessingVersion("insightface-five-point-v1")
+            )
+        }
+    }
+
     func testSimilarityTransformMapsKnownPoints() throws {
         let source = [CGPoint(x: 0, y: 0), CGPoint(x: 10, y: 0), CGPoint(x: 0, y: 10)]
         let destination = [CGPoint(x: 5, y: 7), CGPoint(x: 25, y: 7), CGPoint(x: 5, y: 27)]
@@ -125,6 +200,34 @@ final class Phase4RecognitionTests: XCTestCase {
         )
     }
 
+    func testForwardEnrollmentAcceptsMissingOptionalPoseAxes() {
+        var gate = FaceCaptureGate(policy: .enrollment(.forward))
+        let face = qualityFace(yaw: 0, roll: nil, pitch: nil)
+
+        var finalState: FaceCaptureState = .searching
+        for time in stride(from: 0.0, through: 0.8, by: 0.2) {
+            finalState = gate.evaluate(faces: [face], at: time).state
+        }
+        XCTAssertEqual(finalState, .accepted)
+    }
+
+    func testForwardEnrollmentRejectsMissingYaw() {
+        var gate = FaceCaptureGate(policy: .enrollment(.forward))
+        XCTAssertEqual(
+            gate.evaluate(faces: [qualityFace(yaw: nil)], at: 0).state,
+            .rejected(.wrongPose(.forward))
+        )
+    }
+
+    func testForwardEnrollmentAllowsLaptopCameraPitch() {
+        var gate = FaceCaptureGate(policy: .enrollment(.forward))
+        let face = qualityFace(yaw: 0, pitch: 20 * .pi / 180)
+        XCTAssertEqual(
+            gate.evaluate(faces: [face], at: 0).state,
+            .holding(progress: 0)
+        )
+    }
+
     func testRecognitionCaptureKeepsQualityChecksWithShorterHold() {
         var gate = FaceCaptureGate(policy: .recognition)
         let face = qualityFace(yaw: 0)
@@ -160,13 +263,17 @@ final class Phase4RecognitionTests: XCTestCase {
         MatchResult(score: matches ? 0.8 : 0.1, isMatch: matches)
     }
 
-    private func qualityFace(yaw: Double) -> DetectedFace {
+    private func qualityFace(
+        yaw: Double?,
+        roll: Double? = 0,
+        pitch: Double? = 0
+    ) -> DetectedFace {
         DetectedFace(
             boundingBox: CGRect(x: 0.35, y: 0.30, width: 0.30, height: 0.40),
             confidence: 0.99,
-            roll: 0,
+            roll: roll,
             yaw: yaw,
-            pitch: 0,
+            pitch: pitch,
             captureQuality: 0.9,
             landmarkConfidence: 0.9,
             hasRequiredLandmarks: true,

@@ -12,22 +12,22 @@ struct FacePoseTarget: Equatable, Sendable {
     let rollRange: ClosedRange<Double>
 
     static let forward = FacePoseTarget(
-        yawRange: degrees(-12)...degrees(12),
-        pitchRange: degrees(-15)...degrees(15),
-        rollRange: degrees(-12)...degrees(12)
+        yawRange: degrees(-18)...degrees(18),
+        pitchRange: degrees(-25)...degrees(25),
+        rollRange: degrees(-18)...degrees(18)
     )
 
 
     static let left = FacePoseTarget(
-        yawRange: degrees(18)...degrees(40),
-        pitchRange: degrees(-15)...degrees(15),
-        rollRange: degrees(-15)...degrees(15)
+        yawRange: degrees(15)...degrees(45),
+        pitchRange: degrees(-25)...degrees(25),
+        rollRange: degrees(-18)...degrees(18)
     )
 
     static let right = FacePoseTarget(
-        yawRange: degrees(-40)...degrees(-18),
-        pitchRange: degrees(-15)...degrees(15),
-        rollRange: degrees(-15)...degrees(15)
+        yawRange: degrees(-45)...degrees(-15),
+        pitchRange: degrees(-25)...degrees(25),
+        rollRange: degrees(-18)...degrees(18)
     )
 
     private static func degrees(_ value: Double) -> Double {
@@ -109,7 +109,7 @@ struct FaceCapturePolicy: Equatable, Sendable {
             minimumLandmarkConfidence: 0.50,
             pose: pose,
             requiredPose: pose.target,
-            holdDuration: 0.75
+            holdDuration: 0.50
         )
     }
 }
@@ -230,12 +230,13 @@ struct FaceCaptureGate: Sendable {
         }
 
         if let requiredPose = policy.requiredPose {
+            // Vision does not guarantee pitch and roll on every otherwise valid
+            // observation. Yaw is required to distinguish the three enrollment
+            // poses; optional axes constrain capture only when they are present.
             guard let yaw = face.yaw,
-                  let pitch = face.pitch,
-                  let roll = face.roll,
                   requiredPose.yawRange.contains(yaw),
-                  requiredPose.pitchRange.contains(pitch),
-                  requiredPose.rollRange.contains(roll) else {
+                  face.pitch.map(requiredPose.pitchRange.contains) ?? true,
+                  face.roll.map(requiredPose.rollRange.contains) ?? true else {
                 return .wrongPose(policy.pose)
             }
         }

@@ -6,10 +6,39 @@
 	objectVersion = 110;
 	objects = {
 
+/* Begin PBXContainerItemProxy section */
+		A4000000000000000000000A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 71E967F1306C452F005F1680 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 71E967F8306C452F005F1680;
+			remoteInfo = MacPearl;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		71E967F9306C452F005F1680 /* MacPearl.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MacPearl.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A40000000000000000000001 /* MacPearlTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MacPearlTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B50000000000000000000001 /* MacPearlAuthorizationPlugin.bundle */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MacPearlAuthorizationPlugin.bundle; sourceTree = BUILT_PRODUCTS_DIR; };
+		B5000000000000000000000A /* MacPearlAuthorizationPluginTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MacPearlAuthorizationPluginTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		B50000000000000000000013 /* Exceptions for "MacPearlAuthorizationPlugin" folder in "MacPearlAuthorizationPlugin" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				ExportedSymbols.txt,
+			);
+			target = B50000000000000000000006 /* MacPearlAuthorizationPlugin */;
+		};
+		B50000000000000000000014 /* Exceptions for "MacPearlAuthorizationPlugin" folder in "MacPearlAuthorizationPluginTests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				ExportedSymbols.txt,
+			);
+			target = B5000000000000000000000F /* MacPearlAuthorizationPluginTests */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		71E967FB306C452F005F1680 /* MacPearl */ = {
@@ -22,17 +51,21 @@
 			path = MacPearlTests;
 			sourceTree = "<group>";
 		};
-/* End PBXFileSystemSynchronizedRootGroup section */
-
-/* Begin PBXContainerItemProxy section */
-		A4000000000000000000000A /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 71E967F1306C452F005F1680 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 71E967F8306C452F005F1680;
-			remoteInfo = MacPearl;
+		B50000000000000000000002 /* MacPearlAuthorizationPlugin */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				B50000000000000000000013 /* Exceptions for "MacPearlAuthorizationPlugin" folder in "MacPearlAuthorizationPlugin" target */,
+				B50000000000000000000014 /* Exceptions for "MacPearlAuthorizationPlugin" folder in "MacPearlAuthorizationPluginTests" target */,
+			);
+			path = MacPearlAuthorizationPlugin;
+			sourceTree = "<group>";
 		};
-/* End PBXContainerItemProxy section */
+		B5000000000000000000000B /* MacPearlAuthorizationPluginTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = MacPearlAuthorizationPluginTests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		71E967F6306C452F005F1680 /* Frameworks */ = {
@@ -42,10 +75,18 @@
 		};
 		A40000000000000000000003 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B50000000000000000000003 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+		B5000000000000000000000C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
 		};
 /* End PBXFrameworksBuildPhase section */
 
@@ -55,6 +96,8 @@
 			children = (
 				71E967FB306C452F005F1680 /* MacPearl */,
 				A40000000000000000000002 /* MacPearlTests */,
+				B50000000000000000000002 /* MacPearlAuthorizationPlugin */,
+				B5000000000000000000000B /* MacPearlAuthorizationPluginTests */,
 				71E967FA306C452F005F1680 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -64,6 +107,8 @@
 			children = (
 				71E967F9306C452F005F1680 /* MacPearl.app */,
 				A40000000000000000000001 /* MacPearlTests.xctest */,
+				B50000000000000000000001 /* MacPearlAuthorizationPlugin.bundle */,
+				B5000000000000000000000A /* MacPearlAuthorizationPluginTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -110,6 +155,43 @@
 			productReference = A40000000000000000000001 /* MacPearlTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		B50000000000000000000006 /* MacPearlAuthorizationPlugin */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B50000000000000000000007 /* Build configuration list for PBXNativeTarget "MacPearlAuthorizationPlugin" */;
+			buildPhases = (
+				B50000000000000000000004 /* Sources */,
+				B50000000000000000000003 /* Frameworks */,
+				B50000000000000000000005 /* Resources */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				B50000000000000000000002 /* MacPearlAuthorizationPlugin */,
+			);
+			name = MacPearlAuthorizationPlugin;
+			productName = MacPearlAuthorizationPlugin;
+			productReference = B50000000000000000000001 /* MacPearlAuthorizationPlugin.bundle */;
+			productType = "com.apple.product-type.bundle";
+		};
+		B5000000000000000000000F /* MacPearlAuthorizationPluginTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B50000000000000000000010 /* Build configuration list for PBXNativeTarget "MacPearlAuthorizationPluginTests" */;
+			buildPhases = (
+				B5000000000000000000000D /* Sources */,
+				B5000000000000000000000C /* Frameworks */,
+				B5000000000000000000000E /* Resources */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				B50000000000000000000002 /* MacPearlAuthorizationPlugin */,
+				B5000000000000000000000B /* MacPearlAuthorizationPluginTests */,
+			);
+			name = MacPearlAuthorizationPluginTests;
+			productName = MacPearlAuthorizationPluginTests;
+			productReference = B5000000000000000000000A /* MacPearlAuthorizationPluginTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -126,6 +208,12 @@
 					A40000000000000000000006 = {
 						CreatedOnToolsVersion = 27.0;
 						TestTargetID = 71E967F8306C452F005F1680;
+					};
+					B50000000000000000000006 = {
+						CreatedOnToolsVersion = 27.0;
+					};
+					B5000000000000000000000F = {
+						CreatedOnToolsVersion = 27.0;
 					};
 				};
 			};
@@ -145,6 +233,8 @@
 			targets = (
 				71E967F8306C452F005F1680 /* MacPearl */,
 				A40000000000000000000006 /* MacPearlTests */,
+				B50000000000000000000006 /* MacPearlAuthorizationPlugin */,
+				B5000000000000000000000F /* MacPearlAuthorizationPluginTests */,
 			);
 		};
 /* End PBXProject section */
@@ -157,10 +247,18 @@
 		};
 		A40000000000000000000005 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B50000000000000000000005 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		B5000000000000000000000E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
 		};
 /* End PBXResourcesBuildPhase section */
 
@@ -172,10 +270,18 @@
 		};
 		A40000000000000000000004 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B50000000000000000000004 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		B5000000000000000000000D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
 		};
 /* End PBXSourcesBuildPhase section */
 
@@ -315,6 +421,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = FY4JUG23QT;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
@@ -347,6 +454,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = FY4JUG23QT;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
@@ -375,6 +483,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = FY4JUG23QT;
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.stevenha.MacPearlTests;
@@ -391,6 +500,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = FY4JUG23QT;
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.stevenha.MacPearlTests;
@@ -399,6 +509,78 @@
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_VERSION = 5.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MacPearl.app/Contents/MacOS/MacPearl";
+			};
+			name = Release;
+		};
+		B50000000000000000000008 /* Debug configuration for PBXNativeTarget "MacPearlAuthorizationPlugin" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = NO;
+				DEVELOPMENT_TEAM = FY4JUG23QT;
+				ENABLE_APP_SANDBOX = NO;
+				EXPORTED_SYMBOLS_FILE = MacPearlAuthorizationPlugin/ExportedSymbols.txt;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "MacPearl Authorization Plugin";
+				INFOPLIST_KEY_CFBundlePackageType = BNDL;
+				INSTALL_PATH = /Library/Security/SecurityAgentPlugins;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.stevenha.MacPearl.AuthorizationPlugin;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+		B50000000000000000000009 /* Release configuration for PBXNativeTarget "MacPearlAuthorizationPlugin" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = NO;
+				DEVELOPMENT_TEAM = FY4JUG23QT;
+				ENABLE_APP_SANDBOX = NO;
+				EXPORTED_SYMBOLS_FILE = MacPearlAuthorizationPlugin/ExportedSymbols.txt;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "MacPearl Authorization Plugin";
+				INFOPLIST_KEY_CFBundlePackageType = BNDL;
+				INSTALL_PATH = /Library/Security/SecurityAgentPlugins;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.stevenha.MacPearl.AuthorizationPlugin;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
+		B50000000000000000000011 /* Debug configuration for PBXNativeTarget "MacPearlAuthorizationPluginTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = FY4JUG23QT;
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/MacPearlAuthorizationPlugin";
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.stevenha.MacPearl.AuthorizationPluginTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Debug;
+		};
+		B50000000000000000000012 /* Release configuration for PBXNativeTarget "MacPearlAuthorizationPluginTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = FY4JUG23QT;
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/MacPearlAuthorizationPlugin";
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.stevenha.MacPearl.AuthorizationPluginTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
 			name = Release;
 		};
@@ -427,7 +609,22 @@
 				A40000000000000000000008 /* Debug configuration for PBXNativeTarget "MacPearlTests" */,
 				A40000000000000000000009 /* Release configuration for PBXNativeTarget "MacPearlTests" */,
 			);
-			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B50000000000000000000007 /* Build configuration list for PBXNativeTarget "MacPearlAuthorizationPlugin" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B50000000000000000000008 /* Debug configuration for PBXNativeTarget "MacPearlAuthorizationPlugin" */,
+				B50000000000000000000009 /* Release configuration for PBXNativeTarget "MacPearlAuthorizationPlugin" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		B50000000000000000000010 /* Build configuration list for PBXNativeTarget "MacPearlAuthorizationPluginTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B50000000000000000000011 /* Debug configuration for PBXNativeTarget "MacPearlAuthorizationPluginTests" */,
+				B50000000000000000000012 /* Release configuration for PBXNativeTarget "MacPearlAuthorizationPluginTests" */,
+			);
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
