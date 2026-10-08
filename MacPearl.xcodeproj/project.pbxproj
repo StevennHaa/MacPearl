@@ -21,6 +21,7 @@
 		A40000000000000000000001 /* MacPearlTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MacPearlTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B50000000000000000000001 /* MacPearlAuthorizationPlugin.bundle */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MacPearlAuthorizationPlugin.bundle; sourceTree = BUILT_PRODUCTS_DIR; };
 		B5000000000000000000000A /* MacPearlAuthorizationPluginTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MacPearlAuthorizationPluginTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		C60000000000000000000001 /* MacPearlCameraBroker.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MacPearlCameraBroker.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -65,6 +66,11 @@
 			path = MacPearlAuthorizationPluginTests;
 			sourceTree = "<group>";
 		};
+		C60000000000000000000002 /* MacPearlCameraBroker */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = MacPearlCameraBroker;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -88,6 +94,11 @@
 			files = (
 			);
 		};
+		C60000000000000000000003 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -98,6 +109,7 @@
 				A40000000000000000000002 /* MacPearlTests */,
 				B50000000000000000000002 /* MacPearlAuthorizationPlugin */,
 				B5000000000000000000000B /* MacPearlAuthorizationPluginTests */,
+				C60000000000000000000002 /* MacPearlCameraBroker */,
 				71E967FA306C452F005F1680 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -109,6 +121,7 @@
 				A40000000000000000000001 /* MacPearlTests.xctest */,
 				B50000000000000000000001 /* MacPearlAuthorizationPlugin.bundle */,
 				B5000000000000000000000A /* MacPearlAuthorizationPluginTests.xctest */,
+				C60000000000000000000001 /* MacPearlCameraBroker.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -192,6 +205,24 @@
 			productReference = B5000000000000000000000A /* MacPearlAuthorizationPluginTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		C60000000000000000000006 /* MacPearlCameraBroker */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C60000000000000000000007 /* Build configuration list for PBXNativeTarget "MacPearlCameraBroker" */;
+			buildPhases = (
+				C60000000000000000000004 /* Sources */,
+				C60000000000000000000003 /* Frameworks */,
+				C60000000000000000000005 /* Resources */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				C60000000000000000000002 /* MacPearlCameraBroker */,
+			);
+			name = MacPearlCameraBroker;
+			productName = MacPearlCameraBroker;
+			productReference = C60000000000000000000001 /* MacPearlCameraBroker.app */;
+			productType = "com.apple.product-type.application";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -215,6 +246,9 @@
 					B5000000000000000000000F = {
 						CreatedOnToolsVersion = 27.0;
 					};
+					C60000000000000000000006 = {
+						CreatedOnToolsVersion = 27.0;
+					};
 				};
 			};
 			buildConfigurationList = 71E967F4306C452F005F1680 /* Build configuration list for PBXProject "MacPearl" */;
@@ -235,6 +269,7 @@
 				A40000000000000000000006 /* MacPearlTests */,
 				B50000000000000000000006 /* MacPearlAuthorizationPlugin */,
 				B5000000000000000000000F /* MacPearlAuthorizationPluginTests */,
+				C60000000000000000000006 /* MacPearlCameraBroker */,
 			);
 		};
 /* End PBXProject section */
@@ -260,6 +295,11 @@
 			files = (
 			);
 		};
+		C60000000000000000000005 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -279,6 +319,11 @@
 			);
 		};
 		B5000000000000000000000D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		C60000000000000000000004 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			files = (
 			);
@@ -529,9 +574,19 @@
 				INSTALL_PATH = /Library/Security/SecurityAgentPlugins;
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-framework",
+					AVFoundation,
+					"-framework",
+					Foundation,
+					"-framework",
+					SystemConfiguration,
+					"-framework",
+					Security,
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.stevenha.MacPearl.AuthorizationPlugin;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				OTHER_LDFLAGS = ("$(inherited)", "-framework", AVFoundation);
 				SKIP_INSTALL = YES;
 			};
 			name = Debug;
@@ -553,9 +608,19 @@
 				INSTALL_PATH = /Library/Security/SecurityAgentPlugins;
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-framework",
+					AVFoundation,
+					"-framework",
+					Foundation,
+					"-framework",
+					SystemConfiguration,
+					"-framework",
+					Security,
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.stevenha.MacPearl.AuthorizationPlugin;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				OTHER_LDFLAGS = ("$(inherited)", "-framework", AVFoundation);
 				SKIP_INSTALL = YES;
 			};
 			name = Release;
@@ -569,7 +634,17 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/MacPearlAuthorizationPlugin";
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
-				OTHER_LDFLAGS = ("$(inherited)", "-framework", AVFoundation);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-framework",
+					AVFoundation,
+					"-framework",
+					Foundation,
+					"-framework",
+					SystemConfiguration,
+					"-framework",
+					Security,
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.stevenha.MacPearl.AuthorizationPluginTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
@@ -584,9 +659,59 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/MacPearlAuthorizationPlugin";
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
-				OTHER_LDFLAGS = ("$(inherited)", "-framework", AVFoundation);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-framework",
+					AVFoundation,
+					"-framework",
+					Foundation,
+					"-framework",
+					SystemConfiguration,
+					"-framework",
+					Security,
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.stevenha.MacPearl.AuthorizationPluginTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Release;
+		};
+		C60000000000000000000008 /* Debug configuration for PBXNativeTarget "MacPearlCameraBroker" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = MacPearlCameraBroker/MacPearlCameraBroker.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = FY4JUG23QT;
+				ENABLE_APP_SANDBOX = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "MacPearl Camera Broker";
+				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "MacPearl uses the camera broker to verify frame availability while your session is locked.";
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.stevenha.MacPearl.CameraBroker;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		C60000000000000000000009 /* Release configuration for PBXNativeTarget "MacPearlCameraBroker" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = MacPearlCameraBroker/MacPearlCameraBroker.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = FY4JUG23QT;
+				ENABLE_APP_SANDBOX = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "MacPearl Camera Broker";
+				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "MacPearl uses the camera broker to verify frame availability while your session is locked.";
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.stevenha.MacPearl.CameraBroker;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
 			};
 			name = Release;
 		};
@@ -630,6 +755,14 @@
 			buildConfigurations = (
 				B50000000000000000000011 /* Debug configuration for PBXNativeTarget "MacPearlAuthorizationPluginTests" */,
 				B50000000000000000000012 /* Release configuration for PBXNativeTarget "MacPearlAuthorizationPluginTests" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		C60000000000000000000007 /* Build configuration list for PBXNativeTarget "MacPearlCameraBroker" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C60000000000000000000008 /* Debug configuration for PBXNativeTarget "MacPearlCameraBroker" */,
+				C60000000000000000000009 /* Release configuration for PBXNativeTarget "MacPearlCameraBroker" */,
 			);
 			defaultConfigurationName = Release;
 		};

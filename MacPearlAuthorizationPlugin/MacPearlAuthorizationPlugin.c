@@ -1,4 +1,5 @@
 #include "MacPearlAuthorizationPlugin.h"
+#include "MacPearlBrokerProbe.h"
 
 #include <os/log.h>
 #include <pthread.h>
@@ -33,10 +34,10 @@ typedef struct {
 static os_log_t gMacPearlLog;
 static pthread_mutex_t gProbeFunctionsLock = PTHREAD_MUTEX_INITIALIZER;
 static MacPearlCameraProbeFunctions gProbeFunctions = {
-    .create = MacPearlCameraProbeCreate,
-    .start = MacPearlCameraProbeStart,
-    .cancel = MacPearlCameraProbeCancel,
-    .release = MacPearlCameraProbeRelease,
+    .create = MacPearlBrokerProbeCreate,
+    .start = MacPearlBrokerProbeStart,
+    .cancel = MacPearlBrokerProbeCancel,
+    .release = MacPearlBrokerProbeRelease,
 };
 
 static void MacPearlInitializeLog(void)
@@ -273,8 +274,8 @@ void MacPearlAuthorizationPluginSetCameraProbeFunctionsForTesting(
     pthread_mutex_lock(&gProbeFunctionsLock);
     if (functions == NULL) {
         gProbeFunctions = (MacPearlCameraProbeFunctions){
-            .create = MacPearlCameraProbeCreate, .start = MacPearlCameraProbeStart,
-            .cancel = MacPearlCameraProbeCancel, .release = MacPearlCameraProbeRelease,
+            .create = MacPearlBrokerProbeCreate, .start = MacPearlBrokerProbeStart,
+            .cancel = MacPearlBrokerProbeCancel, .release = MacPearlBrokerProbeRelease,
         };
     } else {
         gProbeFunctions = *functions;

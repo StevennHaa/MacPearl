@@ -9,9 +9,14 @@ import SwiftUI
 
 @main
 struct MacPearlApp: App {
+    @StateObject private var lockSessionMonitor = LockSessionMonitor()
+    @StateObject private var launchAtLogin = LaunchAtLoginController()
+
     var body: some Scene {
         WindowGroup {
             HomeView()
+                .environmentObject(lockSessionMonitor)
+                .environmentObject(launchAtLogin)
         }
     }
 }

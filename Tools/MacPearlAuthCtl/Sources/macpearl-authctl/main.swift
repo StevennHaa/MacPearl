@@ -3,7 +3,7 @@ import Foundation
 import MacPearlAuthCtlCore
 
 private func usage() -> Never {
-    FileHandle.standardError.write(Data("usage: macpearl-authctl check <plugin> | install-diagnostic <plugin> | status | uninstall\n".utf8))
+    FileHandle.standardError.write(Data("usage: macpearl-authctl check <plugin> | check-broker <broker> | install-broker <broker> | remove-broker | install-diagnostic <plugin> | status | uninstall\n".utf8))
     exit(64)
 }
 
@@ -21,6 +21,20 @@ do {
         guard geteuid() == 0 else { throw AuthCtlError.rootRequired }
         try installer.installDiagnostic(plugin: URL(fileURLWithPath: arguments[1]))
         print("Diagnostic CameraProbe policy installed. It always denies authorization.")
+    case "check-broker":
+        guard arguments.count == 2 else { usage() }
+        try installer.checkBroker(URL(fileURLWithPath: arguments[1]))
+        print("Camera broker signature and identity are valid.")
+    case "install-broker":
+        guard arguments.count == 2 else { usage() }
+        guard geteuid() == 0 else { throw AuthCtlError.rootRequired }
+        try installer.installBroker(URL(fileURLWithPath: arguments[1]))
+        print("Camera broker installed and registered for the signed-in user.")
+    case "remove-broker":
+        guard arguments.count == 1 else { usage() }
+        guard geteuid() == 0 else { throw AuthCtlError.rootRequired }
+        try installer.removeBroker()
+        print("Camera broker removed.")
     case "status":
         guard arguments.count == 1 else { usage() }
         guard geteuid() == 0 else { throw AuthCtlError.rootRequired }
