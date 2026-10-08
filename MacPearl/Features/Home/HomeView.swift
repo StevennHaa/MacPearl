@@ -8,6 +8,8 @@
 import SwiftUI
 
 struct HomeView: View {
+    @EnvironmentObject private var lockSessionMonitor: LockSessionMonitor
+    @EnvironmentObject private var launchAtLogin: LaunchAtLoginController
     @StateObject private var camera = CameraSessionController()
     @StateObject private var enrollment = EnrollmentController()
     @StateObject private var recognition = RecognitionController()
@@ -56,6 +58,8 @@ struct HomeView: View {
 
             primaryControls
 
+            lockScreenFoundationControls
+
 #if DEBUG
             if recognition.isActive {
                 recognitionDiagnostics
@@ -79,6 +83,37 @@ struct HomeView: View {
         .onReceive(camera.$faceDetectionResult) { result in
             recognition.updateFacePresence(!result.faces.isEmpty, using: camera)
         }
+    }
+
+    private var lockScreenFoundationControls: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle(
+                "Launch MacPearl at login",
+                isOn: Binding(
+                    get: { launchAtLogin.isEnabled },
+                    set: { launchAtLogin.setEnabled($0) }
+                )
+            )
+            Text(launchAtLogin.errorMessage ?? launchAtLogin.statusMessage)
+                .font(.caption)
+                .foregroundStyle(launchAtLogin.errorMessage == nil ? Color.secondary : Color.red)
+
+#if DEBUG
+            HStack(spacing: 16) {
+                Label(
+                    lockSessionMonitor.snapshot.isLocked ? "Locked" : "Unlocked",
+                    systemImage: lockSessionMonitor.snapshot.isLocked ? "lock.fill" : "lock.open.fill"
+                )
+                Text(lockSessionMonitor.snapshot.lastEvent.rawValue)
+                Text("Events: \(lockSessionMonitor.snapshot.eventCount)")
+                Text("Ready: \(lockSessionMonitor.snapshot.readyEventCount)")
+            }
+            .font(.caption.monospacedDigit())
+            .foregroundStyle(.secondary)
+#endif
+        }
+        .padding(10)
+        .background(.quaternary.opacity(0.25), in: RoundedRectangle(cornerRadius: 8))
     }
 
     @ViewBuilder
@@ -298,4 +333,6 @@ struct HomeView: View {
 
 #Preview {
     HomeView()
+        .environmentObject(LockSessionMonitor())
+        .environmentObject(LaunchAtLoginController())
 }
