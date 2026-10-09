@@ -39,4 +39,75 @@ final class Phase5LockMonitoringTests: XCTestCase {
         XCTAssertTrue(reducer.snapshot.isSleeping)
         XCTAssertEqual(reducer.snapshot.readyEventCount, 0)
     }
+
+    func testLockedSessionLifecycleStartsOncePerReadyGeneration() {
+        var lifecycle = LockedSessionRecognitionLifecycle()
+        let locked = LockSessionSnapshot(isLocked: true)
+
+        XCTAssertEqual(
+            lifecycle.reconcile(snapshot: locked, readyGeneration: 1, hasTemplate: true),
+            .start
+        )
+        XCTAssertTrue(lifecycle.isActive)
+        XCTAssertEqual(
+            lifecycle.reconcile(snapshot: locked, readyGeneration: 1, hasTemplate: true),
+            .none
+        )
+        XCTAssertEqual(
+            lifecycle.reconcile(snapshot: locked, readyGeneration: 2, hasTemplate: true),
+            .none
+        )
+        XCTAssertEqual(lifecycle.handledGeneration, 2)
+    }
+
+    func testLockedSessionLifecycleStopsImmediatelyAfterUnlock() {
+        var lifecycle = LockedSessionRecognitionLifecycle()
+        _ = lifecycle.reconcile(
+            snapshot: LockSessionSnapshot(isLocked: true),
+            readyGeneration: 1,
+            hasTemplate: true
+        )
+
+        XCTAssertEqual(
+            lifecycle.reconcile(
+                snapshot: LockSessionSnapshot(isLocked: false),
+                readyGeneration: 1,
+                hasTemplate: true
+            ),
+            .stop
+        )
+        XCTAssertFalse(lifecycle.isActive)
+    }
+
+    func testLockedSessionLifecycleWaitsForPreloadedTemplate() {
+        var lifecycle = LockedSessionRecognitionLifecycle()
+        let locked = LockSessionSnapshot(isLocked: true)
+
+        XCTAssertEqual(
+            lifecycle.reconcile(snapshot: locked, readyGeneration: 1, hasTemplate: false),
+            .missingTemplate
+        )
+        XCTAssertEqual(
+            lifecycle.reconcile(snapshot: locked, readyGeneration: 1, hasTemplate: true),
+            .start
+        )
+    }
+
+    func testLockedSessionLifecycleStopsForSleep() {
+        var lifecycle = LockedSessionRecognitionLifecycle()
+        _ = lifecycle.reconcile(
+            snapshot: LockSessionSnapshot(isLocked: true),
+            readyGeneration: 1,
+            hasTemplate: true
+        )
+
+        XCTAssertEqual(
+            lifecycle.reconcile(
+                snapshot: LockSessionSnapshot(isLocked: true, isSleeping: true),
+                readyGeneration: 1,
+                hasTemplate: true
+            ),
+            .stop
+        )
+    }
 }
