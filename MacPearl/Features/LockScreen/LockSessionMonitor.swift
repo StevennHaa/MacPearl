@@ -2,6 +2,30 @@ import AppKit
 import Combine
 import CoreGraphics
 import Foundation
+import IOKit
+
+struct ConsoleLockStateResolver: Sendable {
+    nonisolated static func resolve(
+        consoleUsers: [[String: Any]],
+        consoleLocked: Bool?,
+        userID: UInt32
+    ) -> Bool? {
+        let activeUsers = consoleUsers.filter {
+            ($0["kCGSSessionOnConsoleKey"] as? Bool) == true
+        }
+        guard activeUsers.count == 1,
+              let session = activeUsers.first,
+              (session["kCGSSessionUserIDKey"] as? NSNumber)?.uint32Value == userID,
+              (session["kCGSessionLoginDoneKey"] as? Bool) == true else {
+            return nil
+        }
+        let sessionLocked = session["CGSSessionScreenIsLocked"] as? Bool
+        if let sessionLocked, let consoleLocked, sessionLocked != consoleLocked {
+            return nil
+        }
+        return consoleLocked ?? sessionLocked
+    }
+}
 
 enum LockSessionEvent: String, Equatable, Sendable {
     case initialCheck = "Initial check"
@@ -96,11 +120,27 @@ final class LockSessionMonitor: ObservableObject {
     }
 
     nonisolated static func currentLockState() -> Bool? {
-        guard let session = CGSessionCopyCurrentDictionary() as? [String: Any],
-              let locked = session["CGSSessionScreenIsLocked"] as? Bool else {
+        if let session = CGSessionCopyCurrentDictionary() as? [String: Any],
+           let locked = session["CGSSessionScreenIsLocked"] as? Bool {
+            return locked
+        }
+        // The Quartz session dictionary can omit the lock flag while the
+        // login window is active. Use kernel-published console state instead;
+        // never infer a locked screen from a distributed notification.
+        let root = IORegistryGetRootEntry(kIOMainPortDefault)
+        guard root != 0 else { return nil }
+        defer { IOObjectRelease(root) }
+        var properties: Unmanaged<CFMutableDictionary>?
+        guard IORegistryEntryCreateCFProperties(root, &properties, kCFAllocatorDefault, 0) == KERN_SUCCESS,
+              let values = properties?.takeRetainedValue() as? [String: Any],
+              let consoleUsers = values["IOConsoleUsers"] as? [[String: Any]] else {
             return nil
         }
-        return locked
+        return ConsoleLockStateResolver.resolve(
+            consoleUsers: consoleUsers,
+            consoleLocked: values["IOConsoleLocked"] as? Bool,
+            userID: getuid()
+        )
     }
 
     private func installObservers() {
@@ -121,6 +161,7 @@ final class LockSessionMonitor: ObservableObject {
             // immediately. Only transitions into the locked state require
             // confirmation from CoreGraphics.
             MainActor.assumeIsolated {
+                self?.refreshTask?.cancel()
                 self?.process(.screenUnlocked, authoritativeLocked: false)
             }
         })
@@ -156,12 +197,23 @@ final class LockSessionMonitor: ObservableObject {
         })
     }
 
-    private func scheduleSettledCheck(_ event: LockSessionEvent) {
+    func scheduleSettledCheck(_ event: LockSessionEvent) {
         refreshTask?.cancel()
         refreshTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(300))
-            guard !Task.isCancelled else { return }
-            self?.process(event)
+            // Lock notifications can precede the console lock flag. A single
+            // failed lookup previously left recognition idle until display wake.
+            for attempt in 0..<12 {
+                try? await Task.sleep(for: .milliseconds(150))
+                guard !Task.isCancelled, let self else { return }
+                let locked = self.lockStateProvider()
+                if locked == true {
+                    self.process(event, authoritativeLocked: true)
+                    return
+                }
+                if attempt == 11 {
+                    self.process(event, authoritativeLocked: false)
+                }
+            }
         }
     }
 

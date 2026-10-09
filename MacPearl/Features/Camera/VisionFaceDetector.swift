@@ -5,6 +5,7 @@
 
 import AVFoundation
 import CoreGraphics
+import CoreImage
 import Foundation
 import ImageIO
 import Vision
@@ -42,14 +43,21 @@ final class VisionFaceDetector: @unchecked Sendable {
 
     func detectFaces(
         in sampleBuffer: CMSampleBuffer,
-        includeCaptureDetails: Bool = true
+        includeCaptureDetails: Bool = true,
+        maximumAnalysisDimension: CGFloat? = nil
     ) throws -> [DetectedFace] {
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
             throw FaceDetectorError.missingPixelBuffer
         }
 
+        let original = CIImage(cvPixelBuffer: pixelBuffer)
+        let longestEdge = max(original.extent.width, original.extent.height)
+        let scale = maximumAnalysisDimension.map { min(1, $0 / longestEdge) } ?? 1
+        // Uniform scaling preserves Vision's normalized coordinates. The camera
+        // still crops the original frame for the face embedding and preview.
+        let analysisImage = original.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
         let handler = VNImageRequestHandler(
-            cvPixelBuffer: pixelBuffer,
+            ciImage: analysisImage,
             orientation: .up,
             options: [:]
         )

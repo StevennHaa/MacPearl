@@ -92,10 +92,9 @@ struct FaceCapturePolicy: Equatable, Sendable {
         minimumLandmarkConfidence: 0.50,
         pose: .forward,
         requiredPose: .forward,
-        // Recognition already requires three independently matched frames. A short
-        // hold filters transient motion without paying the enrollment-sized delay
-        // before every sample.
-        holdDuration: 0.10
+        // Recognition's three temporally separated matches provide stability.
+        // Accept each quality-approved frame without a second holding period.
+        holdDuration: 0
     )
 
     static func enrollment(_ pose: FaceCapturePose) -> FaceCapturePolicy {
@@ -193,7 +192,9 @@ struct FaceCaptureGate: Sendable {
         lastValidTime = time
         let start = holdStartedAt ?? time
         holdStartedAt = start
-        let progress = min(max((time - start) / policy.holdDuration, 0), 1)
+        let progress = policy.holdDuration > 0
+            ? min(max((time - start) / policy.holdDuration, 0), 1)
+            : 1
 
         guard progress >= 1 else {
             return FaceCaptureEvaluation(

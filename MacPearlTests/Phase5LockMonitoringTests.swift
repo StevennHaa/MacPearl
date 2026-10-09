@@ -1,7 +1,70 @@
 import XCTest
+import Foundation
 @testable import MacPearl
 
 final class Phase5LockMonitoringTests: XCTestCase {
+    @MainActor
+    func testCoordinatorConsumesPublishedLockGenerationImmediately() async throws {
+        var checks = 0
+        let monitor = LockSessionMonitor(lockStateProvider: {
+            checks += 1
+            return checks > 1
+        })
+        let coordinator = LockedSessionRecognitionCoordinator(
+            lockSessionMonitor: monitor,
+            templateStore: EmptyLockTestTemplateStore(),
+            credentialController: ProtectedCredentialController(store: EmptyLockTestCredentialStore())
+        )
+        monitor.scheduleSettledCheck(.screenLocked)
+        try await Task.sleep(for: .milliseconds(600))
+        XCTAssertEqual(monitor.lockedSessionReadyGeneration, 1)
+        XCTAssertEqual(coordinator.handledReadyGeneration, 1)
+        XCTAssertEqual(coordinator.status, .missingTemplate)
+    }
+
+    @MainActor
+    func testDelayedLockFlagStartsRecognitionWithoutWakeEvent() async throws {
+        var checks = 0
+        let monitor = LockSessionMonitor(lockStateProvider: {
+            checks += 1
+            return checks >= 3
+        })
+        XCTAssertFalse(monitor.snapshot.isLocked)
+        monitor.scheduleSettledCheck(.screenLocked)
+        try await Task.sleep(for: .milliseconds(750))
+        XCTAssertTrue(monitor.snapshot.isLocked)
+        XCTAssertEqual(monitor.snapshot.lastEvent, .screenLocked)
+        XCTAssertEqual(monitor.lockedSessionReadyGeneration, 1)
+    }
+
+    func testConsoleFallbackVerifiesCurrentSignedInUser() {
+        let session: [String: Any] = [
+            "kCGSSessionOnConsoleKey": true,
+            "kCGSSessionUserIDKey": NSNumber(value: 501),
+            "kCGSessionLoginDoneKey": true
+        ]
+        XCTAssertEqual(ConsoleLockStateResolver.resolve(consoleUsers: [session], consoleLocked: true, userID: 501), true)
+        XCTAssertEqual(ConsoleLockStateResolver.resolve(consoleUsers: [session], consoleLocked: false, userID: 501), false)
+        XCTAssertNil(ConsoleLockStateResolver.resolve(consoleUsers: [session], consoleLocked: true, userID: 502))
+        XCTAssertNil(ConsoleLockStateResolver.resolve(consoleUsers: [session], consoleLocked: nil, userID: 501))
+    }
+
+    func testConsoleFallbackRejectsInactiveAmbiguousAndConflictingSessions() {
+        var session: [String: Any] = [
+            "kCGSSessionOnConsoleKey": false,
+            "kCGSSessionUserIDKey": NSNumber(value: 501),
+            "kCGSessionLoginDoneKey": true
+        ]
+        XCTAssertNil(ConsoleLockStateResolver.resolve(consoleUsers: [session], consoleLocked: true, userID: 501))
+        session["kCGSSessionOnConsoleKey"] = true
+        XCTAssertNil(ConsoleLockStateResolver.resolve(consoleUsers: [session, session], consoleLocked: true, userID: 501))
+        session["kCGSessionLoginDoneKey"] = false
+        XCTAssertNil(ConsoleLockStateResolver.resolve(consoleUsers: [session], consoleLocked: true, userID: 501))
+        session["kCGSessionLoginDoneKey"] = true
+        session["CGSSessionScreenIsLocked"] = false
+        XCTAssertNil(ConsoleLockStateResolver.resolve(consoleUsers: [session], consoleLocked: true, userID: 501))
+    }
+
     func testLockSignalRequiresAuthoritativeLockedState() {
         var reducer = LockSessionEventReducer()
 
@@ -110,4 +173,88 @@ final class Phase5LockMonitoringTests: XCTestCase {
             .stop
         )
     }
+
+    func testProtectedCredentialCodecRoundTripsWithoutPlaintextEnvelope() throws {
+        let key = Data(repeating: 7, count: 32)
+        let codec = ProtectedCredentialCodec()
+        let envelope = try codec.seal(password: "correct horse battery staple", using: key)
+
+        XCTAssertNotEqual(envelope.ciphertext, Data("correct horse battery staple".utf8))
+        XCTAssertEqual(try codec.open(envelope, using: key), "correct horse battery staple")
+    }
+
+    func testProtectedCredentialCodecRejectsWrongKey() throws {
+        let codec = ProtectedCredentialCodec()
+        let envelope = try codec.seal(password: "secret", using: Data(repeating: 1, count: 32))
+
+        XCTAssertThrowsError(
+            try codec.open(envelope, using: Data(repeating: 2, count: 32))
+        )
+    }
+
+    func testUnlockAttemptGateFailsClosedAndAllowsOnlyOneAttempt() {
+        var gate = UnlockAttemptGate()
+
+        XCTAssertEqual(
+            gate.authorize(
+                locked: nil,
+                sessionReady: true,
+                accessibilityTrusted: true,
+                password: "secret"
+            ),
+            .rejected("macOS did not provide a verifiable lock state. No password was entered.")
+        )
+        XCTAssertFalse(gate.hasAttempted)
+
+        XCTAssertEqual(
+            gate.authorize(
+                locked: false,
+                sessionReady: true,
+                accessibilityTrusted: true,
+                password: "secret"
+            ),
+            .rejected("The screen is not locked.")
+        )
+        XCTAssertEqual(
+            gate.authorize(
+                locked: true,
+                sessionReady: true,
+                accessibilityTrusted: false,
+                password: "secret"
+            ),
+            .rejected("Accessibility permission is required.")
+        )
+        XCTAssertEqual(
+            gate.authorize(
+                locked: true,
+                sessionReady: true,
+                accessibilityTrusted: true,
+                password: "secret"
+            ),
+            .entered
+        )
+        XCTAssertEqual(
+            gate.authorize(
+                locked: true,
+                sessionReady: true,
+                accessibilityTrusted: true,
+                password: "secret"
+            ),
+            .rejected("Only one unlock attempt is allowed per lock session.")
+        )
+    }
+}
+
+private struct EmptyLockTestTemplateStore: FaceTemplateStoring {
+    func load() throws -> UserFaceTemplate? { nil }
+    func save(_ template: UserFaceTemplate) throws {}
+}
+
+private struct EmptyLockTestCredentialStore: ProtectedCredentialStoring {
+    func hasStoredCredential() throws -> Bool { false }
+    func save(password: String) throws {}
+    func loadAuthorizedMaterial() throws -> ProtectedCredentialMaterial {
+        throw ProtectedCredentialError.notConfigured
+    }
+    func delete() throws {}
 }
