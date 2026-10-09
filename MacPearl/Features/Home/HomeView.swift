@@ -10,9 +10,10 @@ import SwiftUI
 struct HomeView: View {
     @EnvironmentObject private var lockSessionMonitor: LockSessionMonitor
     @EnvironmentObject private var launchAtLogin: LaunchAtLoginController
-    @StateObject private var camera = CameraSessionController()
+    @EnvironmentObject private var lockedSessionRecognition: LockedSessionRecognitionCoordinator
+    @ObservedObject var camera: CameraSessionController
+    @ObservedObject var recognition: RecognitionController
     @StateObject private var enrollment = EnrollmentController()
-    @StateObject private var recognition = RecognitionController()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -70,18 +71,26 @@ struct HomeView: View {
         }
         .padding(24)
         .frame(minWidth: 680, minHeight: 520)
-        .onAppear { camera.start() }
-        .onDisappear { camera.stop() }
+        .onAppear { lockedSessionRecognition.setPreviewVisible(true) }
+        .onDisappear { lockedSessionRecognition.setPreviewVisible(false) }
         .onReceive(camera.$capturedFace) { frame in
             guard let frame else { return }
-            if recognition.isLocked {
+            if lockedSessionRecognition.isLockedSessionActive {
+                return
+            } else if recognition.isLocked {
                 recognition.receive(frame, using: camera)
             } else {
                 enrollment.receive(frame, using: camera)
             }
         }
         .onReceive(camera.$faceDetectionResult) { result in
+            guard !lockedSessionRecognition.isLockedSessionActive else { return }
             recognition.updateFacePresence(!result.faces.isEmpty, using: camera)
+        }
+        .onReceive(enrollment.$state) { state in
+            if case .enrolled = state {
+                lockedSessionRecognition.refreshTemplate()
+            }
         }
     }
 
@@ -97,6 +106,15 @@ struct HomeView: View {
             Text(launchAtLogin.errorMessage ?? launchAtLogin.statusMessage)
                 .font(.caption)
                 .foregroundStyle(launchAtLogin.errorMessage == nil ? Color.secondary : Color.red)
+
+            Label(
+                lockedSessionRecognition.status.message,
+                systemImage: lockedSessionRecognition.isLockedSessionActive
+                    ? "person.crop.circle.badge.checkmark"
+                    : "lock.shield"
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
 
 #if DEBUG
             HStack(spacing: 16) {
@@ -332,7 +350,10 @@ struct HomeView: View {
 }
 
 #Preview {
-    HomeView()
-        .environmentObject(LockSessionMonitor())
+    let monitor = LockSessionMonitor()
+    let coordinator = LockedSessionRecognitionCoordinator(lockSessionMonitor: monitor)
+    HomeView(camera: coordinator.camera, recognition: coordinator.recognition)
+        .environmentObject(monitor)
         .environmentObject(LaunchAtLoginController())
+        .environmentObject(coordinator)
 }

@@ -72,7 +72,7 @@ final class LockSessionMonitor: ObservableObject {
     @Published private(set) var snapshot = LockSessionSnapshot()
 
     /// Incremented only after an authoritative locked-state check succeeds.
-    /// The recognition coordinator will consume this in the next PR.
+    /// LockedSessionRecognitionCoordinator consumes each generation once.
     @Published private(set) var lockedSessionReadyGeneration = 0
 
     private var reducer = LockSessionEventReducer()
@@ -117,7 +117,12 @@ final class LockSessionMonitor: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.process(.screenUnlocked) }
+            // An unlock notification can safely revoke locked-session work
+            // immediately. Only transitions into the locked state require
+            // confirmation from CoreGraphics.
+            MainActor.assumeIsolated {
+                self?.process(.screenUnlocked, authoritativeLocked: false)
+            }
         })
         distributedObservers.append(distributed.addObserver(
             forName: Notification.Name("com.apple.screensaver.didstop"),
@@ -160,10 +165,13 @@ final class LockSessionMonitor: ObservableObject {
         }
     }
 
-    private func process(_ event: LockSessionEvent) {
+    private func process(
+        _ event: LockSessionEvent,
+        authoritativeLocked: Bool? = nil
+    ) {
         let becameReady = reducer.receive(
             event,
-            authoritativeLocked: lockStateProvider(),
+            authoritativeLocked: authoritativeLocked ?? lockStateProvider(),
             at: ProcessInfo.processInfo.systemUptime
         )
         snapshot = reducer.snapshot
