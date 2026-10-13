@@ -13,11 +13,13 @@ struct HomeView: View {
     @EnvironmentObject private var launchAtLogin: LaunchAtLoginController
     @EnvironmentObject private var credentialController: ProtectedCredentialController
     @EnvironmentObject private var lockedSessionRecognition: LockedSessionRecognitionCoordinator
+    @EnvironmentObject private var notchOverlay: NotchUnlockOverlayController
     @ObservedObject var camera: CameraSessionController
     @ObservedObject var recognition: RecognitionController
     @StateObject private var enrollment = EnrollmentController()
     @State private var passwordDraft = ""
     @State private var accessibilityTrusted = AccessibilityLoginUnlocker.isTrusted
+    @AppStorage("showNotchAnimation") private var showNotchAnimation = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -124,6 +126,13 @@ struct HomeView: View {
             .foregroundStyle(.secondary)
 
             credentialControls
+            HStack {
+                Toggle("Show notch animation during unlock", isOn: $showNotchAnimation)
+                Spacer()
+                Button("Preview Animation") { notchOverlay.preview() }
+                    .disabled(!showNotchAnimation || lockSessionMonitor.snapshot.isLocked)
+            }
+            .font(.caption)
 
             if let message = lockedSessionRecognition.lastUnlockAttemptMessage {
                 Text("Last automatic unlock attempt: \(message)")
@@ -436,4 +445,5 @@ struct HomeView: View {
         .environmentObject(LaunchAtLoginController())
         .environmentObject(credentials)
         .environmentObject(coordinator)
+        .environmentObject(NotchUnlockOverlayController(monitor: monitor, recognition: coordinator))
 }
