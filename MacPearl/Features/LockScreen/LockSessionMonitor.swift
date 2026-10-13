@@ -8,7 +8,8 @@ struct ConsoleLockStateResolver: Sendable {
     nonisolated static func resolve(
         consoleUsers: [[String: Any]],
         consoleLocked: Bool?,
-        userID: UInt32
+        userID: UInt32,
+        quartzLocked: Bool? = nil
     ) -> Bool? {
         let activeUsers = consoleUsers.filter {
             ($0["kCGSSessionOnConsoleKey"] as? Bool) == true
@@ -23,7 +24,11 @@ struct ConsoleLockStateResolver: Sendable {
         if let sessionLocked, let consoleLocked, sessionLocked != consoleLocked {
             return nil
         }
-        return consoleLocked ?? sessionLocked
+        let registryLocked = consoleLocked ?? sessionLocked
+        if let quartzLocked, let registryLocked, quartzLocked != registryLocked {
+            return nil
+        }
+        return quartzLocked ?? registryLocked
     }
 }
 
@@ -42,6 +47,7 @@ struct LockSessionSnapshot: Equatable, Sendable {
     var lastEvent: LockSessionEvent = .initialCheck
     var eventCount = 0
     var readyEventCount = 0
+    var confirmedUnlockCount = 0
 }
 
 struct LockSessionEventReducer: Sendable {
@@ -63,6 +69,9 @@ struct LockSessionEventReducer: Sendable {
     ) -> Bool {
         snapshot.lastEvent = event
         snapshot.eventCount += 1
+        if event == .screenUnlocked, authoritativeLocked == false {
+            snapshot.confirmedUnlockCount += 1
+        }
 
         switch event {
         case .willSleep:
@@ -120,10 +129,7 @@ final class LockSessionMonitor: ObservableObject {
     }
 
     nonisolated static func currentLockState() -> Bool? {
-        if let session = CGSessionCopyCurrentDictionary() as? [String: Any],
-           let locked = session["CGSSessionScreenIsLocked"] as? Bool {
-            return locked
-        }
+        let quartz = CGSessionCopyCurrentDictionary() as? [String: Any]
         // The Quartz session dictionary can omit the lock flag while the
         // login window is active. Use kernel-published console state instead;
         // never infer a locked screen from a distributed notification.
@@ -139,7 +145,8 @@ final class LockSessionMonitor: ObservableObject {
         return ConsoleLockStateResolver.resolve(
             consoleUsers: consoleUsers,
             consoleLocked: values["IOConsoleLocked"] as? Bool,
-            userID: getuid()
+            userID: getuid(),
+            quartzLocked: quartz?["CGSSessionScreenIsLocked"] as? Bool
         )
     }
 
@@ -157,12 +164,9 @@ final class LockSessionMonitor: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            // An unlock notification can safely revoke locked-session work
-            // immediately. Only transitions into the locked state require
-            // confirmation from CoreGraphics.
             MainActor.assumeIsolated {
                 self?.refreshTask?.cancel()
-                self?.process(.screenUnlocked, authoritativeLocked: false)
+                self?.scheduleSettledCheck(.screenUnlocked)
             }
         })
         distributedObservers.append(distributed.addObserver(
@@ -206,12 +210,15 @@ final class LockSessionMonitor: ObservableObject {
                 try? await Task.sleep(for: .milliseconds(150))
                 guard !Task.isCancelled, let self else { return }
                 let locked = self.lockStateProvider()
-                if locked == true {
-                    self.process(event, authoritativeLocked: true)
+                let expectedLocked = event != .screenUnlocked
+                if locked == expectedLocked {
+                    self.process(event, authoritativeLocked: expectedLocked)
                     return
                 }
                 if attempt == 11 {
-                    self.process(event, authoritativeLocked: false)
+                    // An uncertain probe may stop scanning, but cannot reset
+                    // the password budget as a confirmed unlock.
+                    self.process(event, authoritativeLocked: locked, useProvidedState: true)
                 }
             }
         }
@@ -219,11 +226,12 @@ final class LockSessionMonitor: ObservableObject {
 
     private func process(
         _ event: LockSessionEvent,
-        authoritativeLocked: Bool? = nil
+        authoritativeLocked: Bool? = nil,
+        useProvidedState: Bool = false
     ) {
         let becameReady = reducer.receive(
             event,
-            authoritativeLocked: authoritativeLocked ?? lockStateProvider(),
+            authoritativeLocked: useProvidedState ? authoritativeLocked : (authoritativeLocked ?? lockStateProvider()),
             at: ProcessInfo.processInfo.systemUptime
         )
         snapshot = reducer.snapshot

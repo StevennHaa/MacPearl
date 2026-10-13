@@ -71,7 +71,7 @@ enum ProtectedCredentialError: LocalizedError, Equatable {
 
 protocol ProtectedCredentialStoring: Sendable {
     func hasStoredCredential() throws -> Bool
-    func save(password: String) throws
+    func save(password: String) throws -> ProtectedCredentialMaterial
     func loadAuthorizedMaterial() throws -> ProtectedCredentialMaterial
     func delete() throws
 }
@@ -81,23 +81,49 @@ struct ProtectedCredentialMaterial: Sendable {
     let keyData: Data
 }
 
+struct ProtectedCredentialSaveTransaction {
+    func save(
+        password: String,
+        readExistingKey: () throws -> Data?,
+        createAuthorizedKey: () throws -> Data,
+        writeEnvelope: (Data) throws -> Void
+    ) throws -> ProtectedCredentialMaterial {
+        guard !password.isEmpty else { throw ProtectedCredentialError.invalidEnvelope }
+        // Authenticate before changing ciphertext. Reusing the protected key
+        // makes the envelope the only mutable record and its write atomic.
+        let key = try readExistingKey() ?? createAuthorizedKey()
+        let envelope = try ProtectedCredentialCodec().seal(password: password, using: key)
+        let data = try JSONEncoder().encode(envelope)
+        try writeEnvelope(data)
+        return ProtectedCredentialMaterial(envelopeData: data, keyData: key)
+    }
+}
+
 final class KeychainProtectedCredentialStore: ProtectedCredentialStoring, @unchecked Sendable {
     private let service = "com.stevenha.MacPearl.unlock-credential"
     private let account = "primary"
     private let keyAccount = "encryption-key"
-    private let codec = ProtectedCredentialCodec()
-
     func hasStoredCredential() throws -> Bool {
         try hasItem(account: account) && hasItem(account: keyAccount)
     }
 
-    func save(password: String) throws {
-        guard !password.isEmpty else { throw ProtectedCredentialError.invalidEnvelope }
-        let keyData = try randomKey()
-        let envelope = try codec.seal(password: password, using: keyData)
-        let envelopeData = try JSONEncoder().encode(envelope)
-        try replace(query: baseQuery(account: account), value: envelopeData)
+    func save(password: String) throws -> ProtectedCredentialMaterial {
+        try ProtectedCredentialSaveTransaction().save(
+            password: password,
+            readExistingKey: { try self.hasItem(account: self.keyAccount) ? self.loadAuthorizedKey() : nil },
+            createAuthorizedKey: {
+                guard try !self.hasItem(account: self.account) else {
+                    throw ProtectedCredentialError.missingEncryptionKey
+                }
+                try self.createProtectedKey()
+                return try self.loadAuthorizedKey()
+            },
+            writeEnvelope: { try self.replace(query: self.baseQuery(account: self.account), value: $0) }
+        )
+    }
 
+    private func createProtectedKey() throws {
+        let keyData = try randomKey()
         guard let access = SecAccessControlCreateWithFlags(
             nil,
             kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
@@ -110,15 +136,9 @@ final class KeychainProtectedCredentialStore: ProtectedCredentialStoring, @unche
         item[kSecValueData as String] = keyData
         item[kSecAttrAccessControl as String] = access
         let keyStatus = SecItemAdd(item as CFDictionary, nil)
-        if keyStatus == errSecDuplicateItem {
-            let updateStatus = SecItemUpdate(
-                baseQuery(account: keyAccount) as CFDictionary,
-                [kSecValueData as String: keyData] as CFDictionary
-            )
-            guard updateStatus == errSecSuccess else {
-                throw ProtectedCredentialError.keychain(updateStatus)
-            }
-        } else if keyStatus != errSecSuccess {
+        // If another instance just created the key, read that key rather than
+        // overwrite it and invalidate the other instance's encrypted password.
+        if keyStatus != errSecSuccess && keyStatus != errSecDuplicateItem {
             throw ProtectedCredentialError.keychain(keyStatus)
         }
     }
@@ -134,6 +154,10 @@ final class KeychainProtectedCredentialStore: ProtectedCredentialStoring, @unche
                 : ProtectedCredentialError.keychain(envelopeStatus)
         }
 
+        return ProtectedCredentialMaterial(envelopeData: envelopeData, keyData: try loadAuthorizedKey())
+    }
+
+    private func loadAuthorizedKey() throws -> Data {
         var keyQuery = baseQuery(account: keyAccount)
         keyQuery[kSecReturnData as String] = true
         let context = LAContext()
@@ -150,7 +174,7 @@ final class KeychainProtectedCredentialStore: ProtectedCredentialStoring, @unche
             }
             throw ProtectedCredentialError.keychain(keyStatus)
         }
-        return ProtectedCredentialMaterial(envelopeData: envelopeData, keyData: keyData)
+        return keyData
     }
 
     func delete() throws {
@@ -186,11 +210,14 @@ final class KeychainProtectedCredentialStore: ProtectedCredentialStoring, @unche
     private func hasItem(account: String) throws -> Bool {
         var query = baseQuery(account: account)
         query[kSecMatchLimit as String] = kSecMatchLimitOne
+        let context = LAContext()
+        context.interactionNotAllowed = true
+        query[kSecUseAuthenticationContext as String] = context
         let status = SecItemCopyMatching(query as CFDictionary, nil)
-        guard status == errSecSuccess || status == errSecItemNotFound else {
+        guard status == errSecSuccess || status == errSecItemNotFound || status == errSecInteractionNotAllowed else {
             throw ProtectedCredentialError.keychain(status)
         }
-        return status == errSecSuccess
+        return status != errSecItemNotFound
     }
 
     private func randomKey() throws -> Data {
@@ -211,7 +238,7 @@ enum ProtectedCredentialStatus: Equatable, Sendable {
         switch self {
         case .unavailable: "Automatic unlock is not configured"
         case .configured: "Credential stored; authorize before locking"
-        case .sessionReady: "Automatic unlock session is armed until disarmed or MacPearl quits"
+        case .sessionReady: "Automatic unlock is authorized until MacPearl quits"
         case .failed(let message): message
         }
     }
@@ -244,9 +271,8 @@ final class ProtectedCredentialController: ObservableObject {
 
     func save(password: String) {
         do {
-            try store.save(password: password)
-            status = .configured
-            prepareSession()
+            cachedMaterial = try store.save(password: password)
+            status = .sessionReady
         } catch {
             status = .failed(error.localizedDescription)
         }

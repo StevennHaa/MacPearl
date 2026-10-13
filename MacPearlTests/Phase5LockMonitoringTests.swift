@@ -3,6 +3,81 @@ import Foundation
 @testable import MacPearl
 
 final class Phase5LockMonitoringTests: XCTestCase {
+    func testQuartzLockFlagCannotAuthorizeAnotherConsoleAccount() {
+        let ownSession: [String: Any] = [
+            "kCGSSessionOnConsoleKey": true,
+            "kCGSSessionUserIDKey": NSNumber(value: 501),
+            "kCGSessionLoginDoneKey": true
+        ]
+        XCTAssertEqual(ConsoleLockStateResolver.resolve(consoleUsers: [ownSession], consoleLocked: nil, userID: 501, quartzLocked: true), true)
+        XCTAssertNil(ConsoleLockStateResolver.resolve(consoleUsers: [ownSession], consoleLocked: nil, userID: 502, quartzLocked: true))
+        XCTAssertNil(ConsoleLockStateResolver.resolve(consoleUsers: [], consoleLocked: nil, userID: 501, quartzLocked: true))
+        XCTAssertNil(ConsoleLockStateResolver.resolve(consoleUsers: [ownSession], consoleLocked: false, userID: 501, quartzLocked: true))
+    }
+
+    func testPasswordBudgetSurvivesSleepWakeAndUncertainState() {
+        var budget = LockedSessionAttemptBudget()
+        XCTAssertTrue(budget.reserve())
+        XCTAssertFalse(budget.update(snapshot: LockSessionSnapshot(isLocked: true, isSleeping: true)))
+        XCTAssertFalse(budget.update(snapshot: LockSessionSnapshot(isLocked: true)))
+        XCTAssertFalse(budget.update(snapshot: LockSessionSnapshot(isLocked: false)))
+        XCTAssertFalse(budget.reserve())
+        XCTAssertTrue(budget.update(snapshot: LockSessionSnapshot(confirmedUnlockCount: 1)))
+        XCTAssertTrue(budget.reserve())
+        XCTAssertFalse(budget.update(snapshot: LockSessionSnapshot(confirmedUnlockCount: 1)))
+        XCTAssertFalse(budget.reserve())
+    }
+
+    func testUncertainUnlockSignalDoesNotResetAttemptBudget() {
+        var reducer = LockSessionEventReducer()
+        _ = reducer.receive(.screenLocked, authoritativeLocked: true, at: 1)
+        _ = reducer.receive(.screenUnlocked, authoritativeLocked: nil, at: 2)
+        XCTAssertEqual(reducer.snapshot.confirmedUnlockCount, 0)
+        _ = reducer.receive(.screenUnlocked, authoritativeLocked: true, at: 3)
+        XCTAssertEqual(reducer.snapshot.confirmedUnlockCount, 0)
+        _ = reducer.receive(.screenUnlocked, authoritativeLocked: false, at: 4)
+        XCTAssertEqual(reducer.snapshot.confirmedUnlockCount, 1)
+    }
+
+    func testCanceledKeyAuthorizationDoesNotWriteCiphertext() {
+        var wrote = false
+        XCTAssertThrowsError(try ProtectedCredentialSaveTransaction().save(
+            password: "new password",
+            readExistingKey: { throw ProtectedCredentialError.authorizationRequired },
+            createAuthorizedKey: { XCTFail("Must not replace an existing key"); return Data() },
+            writeEnvelope: { _ in wrote = true }
+        ))
+        XCTAssertFalse(wrote)
+        XCTAssertThrowsError(try ProtectedCredentialSaveTransaction().save(
+            password: "first password",
+            readExistingKey: { nil },
+            createAuthorizedKey: { throw ProtectedCredentialError.authorizationRequired },
+            writeEnvelope: { _ in wrote = true }
+        ))
+        XCTAssertFalse(wrote)
+    }
+
+    func testFailedCredentialUpdatePreservesPreviousPasswordAndKey() throws {
+        let key = Data(repeating: 8, count: 32)
+        let previous = try ProtectedCredentialCodec().seal(password: "previous password", using: key)
+        var stored = try JSONEncoder().encode(previous)
+        XCTAssertThrowsError(try ProtectedCredentialSaveTransaction().save(
+            password: "replacement password",
+            readExistingKey: { key },
+            createAuthorizedKey: { XCTFail("Must reuse the protected key"); return Data() },
+            writeEnvelope: { _ in throw ProtectedCredentialError.keychain(-1) }
+        ))
+        XCTAssertEqual(try ProtectedCredentialCodec().open(JSONDecoder().decode(ProtectedCredentialEnvelope.self, from: stored), using: key), "previous password")
+        let material = try ProtectedCredentialSaveTransaction().save(
+            password: "replacement password",
+            readExistingKey: { key },
+            createAuthorizedKey: { XCTFail("Must reuse the protected key"); return Data() },
+            writeEnvelope: { stored = $0 }
+        )
+        XCTAssertEqual(material.keyData, key)
+        XCTAssertEqual(try ProtectedCredentialCodec().open(JSONDecoder().decode(ProtectedCredentialEnvelope.self, from: stored), using: key), "replacement password")
+    }
+
     @MainActor
     func testCoordinatorConsumesPublishedLockGenerationImmediately() async throws {
         var checks = 0
@@ -252,7 +327,9 @@ private struct EmptyLockTestTemplateStore: FaceTemplateStoring {
 
 private struct EmptyLockTestCredentialStore: ProtectedCredentialStoring {
     func hasStoredCredential() throws -> Bool { false }
-    func save(password: String) throws {}
+    func save(password: String) throws -> ProtectedCredentialMaterial {
+        throw ProtectedCredentialError.notConfigured
+    }
     func loadAuthorizedMaterial() throws -> ProtectedCredentialMaterial {
         throw ProtectedCredentialError.notConfigured
     }

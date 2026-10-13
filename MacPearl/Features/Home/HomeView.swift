@@ -189,11 +189,6 @@ struct HomeView: View {
                         if case .sessionReady = credentialController.status { return true }
                         return false
                     }())
-                    if case .sessionReady = credentialController.status {
-                        Button("Disarm Session") {
-                            credentialController.clearSession()
-                        }
-                    }
                     Button("Remove Stored Password") {
                         credentialController.delete()
                     }
@@ -204,7 +199,7 @@ struct HomeView: View {
                         .foregroundStyle(.orange)
                 }
                 if case .sessionReady = credentialController.status {
-                    Text("The decryption key stays in MacPearl's memory while this session is armed. Disarm it when you no longer want automatic unlock.")
+                    Text("Automatic unlock stays authorized until you quit MacPearl or remove the stored password.")
                         .font(.caption)
                         .foregroundStyle(.orange)
                 }

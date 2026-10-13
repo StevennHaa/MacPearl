@@ -2,6 +2,24 @@ import Combine
 import Foundation
 import OSLog
 
+struct LockedSessionAttemptBudget: Sendable {
+    private(set) var hasAttempted = false
+    private var handledUnlockCount = 0
+
+    mutating func update(snapshot: LockSessionSnapshot) -> Bool {
+        guard snapshot.confirmedUnlockCount > handledUnlockCount else { return false }
+        handledUnlockCount = snapshot.confirmedUnlockCount
+        hasAttempted = false
+        return true
+    }
+
+    mutating func reserve() -> Bool {
+        guard !hasAttempted else { return false }
+        hasAttempted = true
+        return true
+    }
+}
+
 enum LockedSessionRecognitionDecision: Equatable, Sendable {
     case none
     case start
@@ -106,7 +124,8 @@ final class LockedSessionRecognitionCoordinator: ObservableObject {
     private var lifecycle = LockedSessionRecognitionLifecycle()
     private var subscriptions: Set<AnyCancellable> = []
     private var isPreviewVisible = false
-    private var unlockAttemptedForSession = false
+    private var attemptBudget = LockedSessionAttemptBudget()
+    private var unlockAttemptedForSession: Bool { attemptBudget.hasAttempted }
     private var scanStartTask: Task<Void, Never>?
     private var unlockTask: Task<Void, Never>?
     private var lastCaptureIssue: FaceCaptureIssue?
@@ -206,6 +225,9 @@ final class LockedSessionRecognitionCoordinator: ObservableObject {
         readyGeneration suppliedGeneration: Int? = nil
     ) {
         let snapshot = suppliedSnapshot ?? lockSessionMonitor.snapshot
+        if attemptBudget.update(snapshot: snapshot) {
+            unlocker.reset()
+        }
         let decision = lifecycle.reconcile(
             snapshot: snapshot,
             readyGeneration: suppliedGeneration ?? lockSessionMonitor.lockedSessionReadyGeneration,
@@ -219,10 +241,13 @@ final class LockedSessionRecognitionCoordinator: ObservableObject {
                 return
             }
             isLockedSessionActive = true
-            unlockAttemptedForSession = false
             lastCaptureIssue = nil
             lastUnlockAttemptMessage = "Starting face recognition for this lock session."
-            unlocker.reset()
+            guard !unlockAttemptedForSession else {
+                status = .unlockFailed("A password attempt was already made. Unlock manually before trying again.")
+                lastUnlockAttemptMessage = status.message
+                break
+            }
             logger.info("Starting locked-session recognition")
             camera.start()
             scanStartTask?.cancel()
@@ -251,8 +276,6 @@ final class LockedSessionRecognitionCoordinator: ObservableObject {
                 lastUnlockAttemptMessage = "Scan stopped before password entry: \(reason)"
             }
             recognition.cancel(using: camera)
-            unlocker.reset()
-            unlockAttemptedForSession = false
             if !isPreviewVisible { camera.stop() }
         case .missingTemplate:
             isLockedSessionActive = false
@@ -285,13 +308,13 @@ final class LockedSessionRecognitionCoordinator: ObservableObject {
             status = .cooldown(until: until)
         case .unlocked(let score):
             guard !unlockAttemptedForSession else { return }
-            unlockAttemptedForSession = true
             guard case .sessionReady = credentialController.status else {
                 status = .recognized(score: score)
                 lastUnlockAttemptMessage = "Face recognized, but the credential session was not authorized."
                 logger.notice("Face recognized but automatic unlock was not armed")
                 return
             }
+            guard attemptBudget.reserve() else { return }
             unlockTask = Task { [weak self] in
                 guard let self,
                       let password = self.credentialController.withCachedPassword({ $0 }) else { return }
