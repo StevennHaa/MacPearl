@@ -52,6 +52,7 @@ final class CameraSessionController: NSObject, ObservableObject, @unchecked Send
     private let faceDetector = VisionFaceDetector()
     private let imageContext = CIContext(options: [.cacheIntermediates: false])
     private var faceCaptureGate = FaceCaptureGate()
+    private var capturePolicy = FaceCapturePolicy.balanced
     private var faceCaptureIsComplete = false
 
     private var currentInput: AVCaptureDeviceInput?
@@ -556,7 +557,8 @@ extension CameraSessionController: AVCaptureVideoDataOutputSampleBufferDelegate 
             let captureIsComplete = faceCaptureIsComplete
             let faces = try faceDetector.detectFaces(
                 in: sampleBuffer,
-                includeCaptureDetails: !captureIsComplete
+                includeCaptureDetails: !captureIsComplete,
+                maximumAnalysisDimension: capturePolicy == .recognition ? 960 : nil
             )
             publishFaceDetection(FaceDetectionResult(faces: faces, errorDescription: nil))
             guard !captureIsComplete else { return }
@@ -627,6 +629,7 @@ extension CameraSessionController: AVCaptureVideoDataOutputSampleBufferDelegate 
         sampleQueue.async { [weak self] in
             guard let self else { return }
             self.faceCaptureGate = FaceCaptureGate(policy: policy)
+            self.capturePolicy = policy
             self.faceCaptureIsComplete = false
             DispatchQueue.main.async { [weak self] in
                 self?.faceCaptureState = .searching

@@ -228,12 +228,14 @@ final class Phase4RecognitionTests: XCTestCase {
         )
     }
 
-    func testRecognitionCaptureKeepsQualityChecksWithShorterHold() {
+    func testRecognitionCaptureImmediatelyAcceptsQualityApprovedFrame() {
         var gate = FaceCaptureGate(policy: .recognition)
         let face = qualityFace(yaw: 0)
 
-        XCTAssertEqual(gate.evaluate(faces: [face], at: 0).state, .holding(progress: 0))
-        XCTAssertEqual(gate.evaluate(faces: [face], at: 0.1).state, .accepted)
+        let accepted = gate.evaluate(faces: [face], at: 0)
+        XCTAssertEqual(accepted.state, .accepted)
+        XCTAssertNotNil(accepted.acceptedFace)
+        XCTAssertNil(gate.evaluate(faces: [face], at: 0.1).acceptedFace)
 
         var lowQualityGate = FaceCaptureGate(policy: .recognition)
         let lowQualityFace = DetectedFace(

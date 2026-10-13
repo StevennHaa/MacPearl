@@ -5,15 +5,19 @@
 //  Created by Steven Ha on 9/29/26.
 //
 
+import AppKit
 import SwiftUI
 
 struct HomeView: View {
     @EnvironmentObject private var lockSessionMonitor: LockSessionMonitor
     @EnvironmentObject private var launchAtLogin: LaunchAtLoginController
+    @EnvironmentObject private var credentialController: ProtectedCredentialController
     @EnvironmentObject private var lockedSessionRecognition: LockedSessionRecognitionCoordinator
     @ObservedObject var camera: CameraSessionController
     @ObservedObject var recognition: RecognitionController
     @StateObject private var enrollment = EnrollmentController()
+    @State private var passwordDraft = ""
+    @State private var accessibilityTrusted = AccessibilityLoginUnlocker.isTrusted
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -72,6 +76,9 @@ struct HomeView: View {
         .padding(24)
         .frame(minWidth: 680, minHeight: 520)
         .onAppear { lockedSessionRecognition.setPreviewVisible(true) }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            accessibilityTrusted = AccessibilityLoginUnlocker.isTrusted
+        }
         .onDisappear { lockedSessionRecognition.setPreviewVisible(false) }
         .onReceive(camera.$capturedFace) { frame in
             guard let frame else { return }
@@ -116,6 +123,14 @@ struct HomeView: View {
             .font(.caption)
             .foregroundStyle(.secondary)
 
+            credentialControls
+
+            if let message = lockedSessionRecognition.lastUnlockAttemptMessage {
+                Text("Last automatic unlock attempt: \(message)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
 #if DEBUG
             HStack(spacing: 16) {
                 Label(
@@ -129,6 +144,66 @@ struct HomeView: View {
             .font(.caption.monospacedDigit())
             .foregroundStyle(.secondary)
 #endif
+        }
+        .padding(10)
+        .background(.quaternary.opacity(0.25), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var credentialControls: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                Label("Automatic unlock", systemImage: "key.fill")
+                    .fontWeight(.medium)
+                Text(credentialController.status.message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+
+            if case .unavailable = credentialController.status {
+                HStack {
+                    SecureField("Mac password (stored encrypted)", text: $passwordDraft)
+                        .textFieldStyle(.roundedBorder)
+                    Button("Store and Authorize") {
+                        credentialController.save(password: passwordDraft)
+                        passwordDraft = ""
+                    }
+                    .disabled(passwordDraft.isEmpty)
+                }
+                Text("Convenience feature: this is not equivalent to Touch ID or Face ID.")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            } else {
+                HStack {
+                    if !accessibilityTrusted {
+                        Button("Grant Accessibility Access") {
+                            _ = AccessibilityLoginUnlocker.promptForPermission()
+                            accessibilityTrusted = AccessibilityLoginUnlocker.isTrusted
+                        }
+                    }
+                    Button("Authorize Session") {
+                        credentialController.prepareSession()
+                    }
+                    .disabled({
+                        guard accessibilityTrusted else { return true }
+                        if case .sessionReady = credentialController.status { return true }
+                        return false
+                    }())
+                    Button("Remove Stored Password") {
+                        credentialController.delete()
+                    }
+                }
+                if !accessibilityTrusted {
+                    Text("Enable MacPearl in System Settings > Privacy & Security > Accessibility, then return to the app. MacPearl uses this permission to enter your password at the lock screen after a verified face match.")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+                if case .sessionReady = credentialController.status {
+                    Text("Automatic unlock stays authorized until you quit MacPearl or remove the stored password.")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+            }
         }
         .padding(10)
         .background(.quaternary.opacity(0.25), in: RoundedRectangle(cornerRadius: 8))
@@ -351,9 +426,14 @@ struct HomeView: View {
 
 #Preview {
     let monitor = LockSessionMonitor()
-    let coordinator = LockedSessionRecognitionCoordinator(lockSessionMonitor: monitor)
+    let credentials = ProtectedCredentialController()
+    let coordinator = LockedSessionRecognitionCoordinator(
+        lockSessionMonitor: monitor,
+        credentialController: credentials
+    )
     HomeView(camera: coordinator.camera, recognition: coordinator.recognition)
         .environmentObject(monitor)
         .environmentObject(LaunchAtLoginController())
+        .environmentObject(credentials)
         .environmentObject(coordinator)
 }
