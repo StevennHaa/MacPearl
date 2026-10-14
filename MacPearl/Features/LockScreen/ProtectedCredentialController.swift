@@ -4,7 +4,7 @@ import Foundation
 import LocalAuthentication
 import Security
 
-struct ProtectedCredentialEnvelope: Codable, Equatable, Sendable {
+nonisolated struct ProtectedCredentialEnvelope: Codable, Equatable, Sendable {
     let version: Int
     let nonce: Data
     let ciphertext: Data
@@ -13,7 +13,7 @@ struct ProtectedCredentialEnvelope: Codable, Equatable, Sendable {
     static let currentVersion = 1
 }
 
-struct ProtectedCredentialCodec: Sendable {
+nonisolated struct ProtectedCredentialCodec: Sendable {
     func seal(password: String, using keyData: Data) throws -> ProtectedCredentialEnvelope {
         guard keyData.count == 32 else {
             throw ProtectedCredentialError.invalidKey
@@ -48,12 +48,13 @@ struct ProtectedCredentialCodec: Sendable {
     }
 }
 
-enum ProtectedCredentialError: LocalizedError, Equatable {
+nonisolated enum ProtectedCredentialError: LocalizedError, Equatable {
     case invalidKey
     case invalidEnvelope
     case notConfigured
     case missingEncryptionKey
     case authorizationRequired
+    case passwordVerificationFailed
     case keychain(OSStatus)
 
     var errorDescription: String? {
@@ -64,24 +65,30 @@ enum ProtectedCredentialError: LocalizedError, Equatable {
         case .missingEncryptionKey:
             "The protected encryption key is missing. Remove the stored password and set it up again while signed in."
         case .authorizationRequired: "Authorize MacPearl while signed in before locking."
+        case .passwordVerificationFailed: "macOS could not verify this login password. Check your current Mac password and try again."
         case .keychain(let status): "The protected credential could not be accessed (Keychain error \(status))."
         }
     }
 }
 
-protocol ProtectedCredentialStoring: Sendable {
+nonisolated protocol ProtectedCredentialStoring: Sendable {
     func hasStoredCredential() throws -> Bool
     func save(password: String) throws -> ProtectedCredentialMaterial
     func loadAuthorizedMaterial() throws -> ProtectedCredentialMaterial
     func delete() throws
+    nonisolated func cancelAuthorization()
 }
 
-struct ProtectedCredentialMaterial: Sendable {
+extension ProtectedCredentialStoring {
+    nonisolated func cancelAuthorization() {}
+}
+
+nonisolated struct ProtectedCredentialMaterial: Sendable {
     let envelopeData: Data
     let keyData: Data
 }
 
-struct ProtectedCredentialSaveTransaction {
+nonisolated struct ProtectedCredentialSaveTransaction {
     func save(
         password: String,
         readExistingKey: () throws -> Data?,
@@ -99,10 +106,19 @@ struct ProtectedCredentialSaveTransaction {
     }
 }
 
-final class KeychainProtectedCredentialStore: ProtectedCredentialStoring, @unchecked Sendable {
+nonisolated final class KeychainProtectedCredentialStore: ProtectedCredentialStoring, @unchecked Sendable {
     private let service = "com.stevenha.MacPearl.unlock-credential"
     private let account = "primary"
     private let keyAccount = "encryption-key"
+    private let contextLock = NSLock()
+    nonisolated(unsafe) private var authorizationContext: LAContext?
+
+    nonisolated func cancelAuthorization() {
+        contextLock.lock()
+        let context = authorizationContext
+        contextLock.unlock()
+        context?.invalidate()
+    }
     func hasStoredCredential() throws -> Bool {
         try hasItem(account: account) && hasItem(account: keyAccount)
     }
@@ -118,7 +134,10 @@ final class KeychainProtectedCredentialStore: ProtectedCredentialStoring, @unche
                 try self.createProtectedKey()
                 return try self.loadAuthorizedKey()
             },
-            writeEnvelope: { try self.replace(query: self.baseQuery(account: self.account), value: $0) }
+            writeEnvelope: {
+                try Task.checkCancellation()
+                try self.replace(query: self.baseQuery(account: self.account), value: $0)
+            }
         )
     }
 
@@ -162,6 +181,15 @@ final class KeychainProtectedCredentialStore: ProtectedCredentialStoring, @unche
         keyQuery[kSecReturnData as String] = true
         let context = LAContext()
         context.localizedReason = "Authorize MacPearl to prepare automatic unlock"
+        contextLock.lock()
+        authorizationContext = context
+        contextLock.unlock()
+        defer {
+            contextLock.lock()
+            if authorizationContext === context { authorizationContext = nil }
+            contextLock.unlock()
+        }
+        try Task.checkCancellation()
         keyQuery[kSecUseAuthenticationContext as String] = context
         var keyResult: CFTypeRef?
         let keyStatus = SecItemCopyMatching(keyQuery as CFDictionary, &keyResult)
@@ -178,6 +206,7 @@ final class KeychainProtectedCredentialStore: ProtectedCredentialStoring, @unche
     }
 
     func delete() throws {
+        try Task.checkCancellation()
         for account in [account, keyAccount] {
             let status = SecItemDelete(baseQuery(account: account) as CFDictionary)
             guard status == errSecSuccess || status == errSecItemNotFound else {
@@ -233,6 +262,7 @@ enum ProtectedCredentialStatus: Equatable, Sendable {
     case configured
     case sessionReady
     case failed(String)
+    case working(String)
 
     var message: String {
         switch self {
@@ -240,6 +270,7 @@ enum ProtectedCredentialStatus: Equatable, Sendable {
         case .configured: "Credential stored; authorize before locking"
         case .sessionReady: "Automatic unlock is authorized until MacPearl quits"
         case .failed(let message): message
+        case .working(let message): message
         }
     }
 }
@@ -247,59 +278,103 @@ enum ProtectedCredentialStatus: Equatable, Sendable {
 @MainActor
 final class ProtectedCredentialController: ObservableObject {
     @Published private(set) var status: ProtectedCredentialStatus = .unavailable
+    @Published private(set) var isBusy = false
+    @Published private(set) var hasStoredCredential = false
 
     private let store: any ProtectedCredentialStoring
     private let codec = ProtectedCredentialCodec()
     // Like Glance, keep the user-authorized session key—not the plaintext
     // password—in memory so the lock-screen path needs no Keychain prompt.
     private var cachedMaterial: ProtectedCredentialMaterial?
+    private let worker: CredentialWorker
+    private var operation: Task<Void, Never>?
+    private var operationID = UUID()
 
-    init(store: (any ProtectedCredentialStoring)? = nil) {
+    init(store: (any ProtectedCredentialStoring)? = nil, validator: any SystemPasswordValidating = SystemPasswordValidator()) {
         self.store = store ?? KeychainProtectedCredentialStore()
+        worker = CredentialWorker(store: self.store, validator: validator)
         do {
-            status = try self.store.hasStoredCredential() ? .configured : .unavailable
+            hasStoredCredential = try self.store.hasStoredCredential()
+            status = hasStoredCredential ? .configured : .unavailable
         } catch {
             status = .failed(error.localizedDescription)
         }
     }
 
     var isConfigured: Bool {
-        if case .unavailable = status { return false }
-        if case .failed = status { return false }
-        return true
+        hasStoredCredential
     }
 
     func save(password: String) {
-        do {
-            cachedMaterial = try store.save(password: password)
-            status = .sessionReady
-        } catch {
-            status = .failed(error.localizedDescription)
-        }
+        perform(.save(password))
     }
 
     func prepareSession() {
-        do {
-            cachedMaterial = try store.loadAuthorizedMaterial()
-            status = .sessionReady
-        } catch {
-            cachedMaterial = nil
-            status = .failed(error.localizedDescription)
-        }
+        perform(.authorize)
     }
 
     func clearSession() {
+        cancelAuthorization()
         cachedMaterial = nil
-        if isConfigured { status = .configured }
+        status = hasStoredCredential ? .configured : .unavailable
     }
 
     func delete() {
-        do {
-            try store.delete()
-            clearSession()
-            status = .unavailable
-        } catch {
-            status = .failed(error.localizedDescription)
+        perform(.delete)
+    }
+
+    func requirePasswordVerification() {
+        clearSession()
+        status = .failed("Automatic unlock did not complete. Verify or update your Mac password before trying again.")
+    }
+
+    func cancelAuthorization() {
+        operationID = UUID()
+        operation?.cancel()
+        operation = nil
+        store.cancelAuthorization()
+        isBusy = false
+        if case .working = status { status = hasStoredCredential ? .configured : .unavailable }
+    }
+
+    private func perform(_ request: CredentialRequest) {
+        cancelAuthorization()
+        let id = UUID()
+        operationID = id
+        cachedMaterial = nil
+        isBusy = true
+        status = .working(request.message)
+        operation = Task { [weak self, worker] in
+            do {
+                let material = try await worker.run(request)
+                guard !Task.isCancelled, let self, self.operationID == id else {
+                    await self?.reconcileStoredState()
+                    return
+                }
+                self.cachedMaterial = material
+                self.hasStoredCredential = material != nil
+                self.status = material == nil ? .unavailable : .sessionReady
+                self.isBusy = false
+                self.operation = nil
+            } catch {
+                guard !Task.isCancelled, let self, self.operationID == id else {
+                    await self?.reconcileStoredState()
+                    return
+                }
+                self.status = .failed(error.localizedDescription)
+                self.isBusy = false
+                self.operation = nil
+            }
+        }
+    }
+
+    private func reconcileStoredState() async {
+        let generation = operationID
+        let stored = await worker.hasCredential()
+        guard operationID == generation, !isBusy, let stored else { return }
+        hasStoredCredential = stored
+        if cachedMaterial == nil, status == .configured || status == .unavailable {
+            status = stored ? .configured : .unavailable
         }
     }
 
@@ -315,5 +390,49 @@ final class ProtectedCredentialController: ObservableObject {
             status = .failed(error.localizedDescription)
             return nil
         }
+    }
+}
+
+private enum CredentialRequest: Sendable {
+    case save(String), authorize, delete
+    var message: String {
+        switch self {
+        case .save: "Saving and authorizing…"
+        case .authorize: "Authorizing…"
+        case .delete: "Removing stored password…"
+        }
+    }
+}
+
+private actor CredentialWorker {
+    let store: any ProtectedCredentialStoring
+    let validator: any SystemPasswordValidating
+    init(store: any ProtectedCredentialStoring, validator: any SystemPasswordValidating) {
+        self.store = store
+        self.validator = validator
+    }
+    func hasCredential() -> Bool? { try? store.hasStoredCredential() }
+
+    func run(_ request: CredentialRequest) throws -> ProtectedCredentialMaterial? {
+        try Task.checkCancellation()
+        let material: ProtectedCredentialMaterial
+        switch request {
+        case .save(let password):
+            try validator.validate(password)
+            try Task.checkCancellation()
+            material = try store.save(password: password)
+        case .authorize: material = try store.loadAuthorizedMaterial()
+        case .delete:
+            try store.delete()
+            return nil
+        }
+        // A corrupt or mismatched record must not report an authorized session.
+        let password = try ProtectedCredentialCodec().open(
+            JSONDecoder().decode(ProtectedCredentialEnvelope.self, from: material.envelopeData),
+            using: material.keyData
+        )
+        if case .authorize = request { try validator.validate(password) }
+        try Task.checkCancellation()
+        return material
     }
 }

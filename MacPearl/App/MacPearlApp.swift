@@ -9,36 +9,42 @@ import SwiftUI
 
 @main
 struct MacPearlApp: App {
-    @StateObject private var lockSessionMonitor: LockSessionMonitor
-    @StateObject private var launchAtLogin = LaunchAtLoginController()
-    @StateObject private var credentialController: ProtectedCredentialController
-    @StateObject private var lockedSessionRecognition: LockedSessionRecognitionCoordinator
-    @StateObject private var notchOverlay: NotchUnlockOverlayController
-
-    init() {
-        let monitor = LockSessionMonitor()
-        let credentials = ProtectedCredentialController()
-        _lockSessionMonitor = StateObject(wrappedValue: monitor)
-        _credentialController = StateObject(wrappedValue: credentials)
-        let recognition = LockedSessionRecognitionCoordinator(
-            lockSessionMonitor: monitor,
-            credentialController: credentials
-        )
-        _lockedSessionRecognition = StateObject(wrappedValue: recognition)
-        _notchOverlay = StateObject(wrappedValue: NotchUnlockOverlayController(monitor: monitor, recognition: recognition))
-    }
+    @StateObject private var session = AppSessionController()
+#if DEBUG
+    @Environment(\.openWindow) private var openWindow
+#endif
 
     var body: some Scene {
-        WindowGroup {
-            HomeView(
-                camera: lockedSessionRecognition.camera,
-                recognition: lockedSessionRecognition.recognition
-            )
-                .environmentObject(lockSessionMonitor)
-                .environmentObject(launchAtLogin)
-                .environmentObject(credentialController)
-                .environmentObject(lockedSessionRecognition)
-                .environmentObject(notchOverlay)
+        MenuBarExtra("MacPearl", systemImage: "faceid") {
+            Text(session.readiness.title)
+            if case .attention(let message) = session.readiness { Text(message) }
+            Divider()
+            Button(session.readiness == .setupRequired ? "Continue Setup…" : "Open Setup…") { session.openSetup() }
+            if session.credentials.hasStoredCredential && session.credentials.status != .sessionReady {
+                Button("Authorize Session") { session.requestAuthorization() }.disabled(session.credentials.isBusy)
+            }
+            SettingsLink { Text("Settings…") }
+#if DEBUG
+            Button("Developer Demo…") {
+                session.closeSetup()
+                NSApplication.shared.activate(ignoringOtherApps: true)
+                openWindow(id: "developer-demo")
+            }
+#endif
+            Divider()
+            Button("Quit MacPearl") { session.shutdown(); NSApplication.shared.terminate(nil) }.keyboardShortcut("q")
         }
+        Settings { MacPearlSettingsView(session: session) }
+#if DEBUG
+        Window("MacPearl Developer Demo", id: "developer-demo") {
+            HomeView(camera: session.recognition.camera, recognition: session.recognition.recognition)
+                .environmentObject(session.monitor)
+                .environmentObject(session.launchAtLogin)
+                .environmentObject(session.credentials)
+                .environmentObject(session.recognition)
+                .environmentObject(session.notch)
+                .environmentObject(session)
+        }.defaultLaunchBehavior(.suppressed)
+#endif
     }
 }

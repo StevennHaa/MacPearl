@@ -14,6 +14,7 @@ struct HomeView: View {
     @EnvironmentObject private var credentialController: ProtectedCredentialController
     @EnvironmentObject private var lockedSessionRecognition: LockedSessionRecognitionCoordinator
     @EnvironmentObject private var notchOverlay: NotchUnlockOverlayController
+    @EnvironmentObject private var appSession: AppSessionController
     @ObservedObject var camera: CameraSessionController
     @ObservedObject var recognition: RecognitionController
     @StateObject private var enrollment = EnrollmentController()
@@ -198,8 +199,8 @@ struct HomeView: View {
                         if case .sessionReady = credentialController.status { return true }
                         return false
                     }())
-                    Button("Remove Stored Password") {
-                        credentialController.delete()
+                    Button("Update Password…") {
+                        appSession.updatePassword()
                     }
                 }
                 if !accessibilityTrusted {
@@ -208,7 +209,7 @@ struct HomeView: View {
                         .foregroundStyle(.orange)
                 }
                 if case .sessionReady = credentialController.status {
-                    Text("Automatic unlock stays authorized until you quit MacPearl or remove the stored password.")
+                    Text("Automatic unlock stays authorized until you quit MacPearl or update the stored password.")
                         .font(.caption)
                         .foregroundStyle(.orange)
                 }
