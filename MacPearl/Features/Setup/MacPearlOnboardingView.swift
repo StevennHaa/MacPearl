@@ -76,9 +76,13 @@ struct MacPearlOnboardingView: View {
             if !session.hasFace && !enrollment.isActive { Button("Start Enrollment") { session.beginEnrollment() } }
         case .credential:
             Text("Authorize automatic unlock for this app session. The decryption key stays in memory until MacPearl quits.")
+            if credentials.needsRepair {
+                Text("Your saved unlock credential needs repair. Enter your current Mac password to rebuild it.")
+                    .foregroundStyle(.orange)
+            }
             if !credentials.hasStoredCredential || session.isUpdatingPassword {
                 SecureField("Mac login password", text: $password).textFieldStyle(.roundedBorder).disabled(credentials.isBusy)
-                Button("Verify, Save and Authorize") {
+                Button(credentials.needsRepair ? "Verify and Repair" : "Verify, Save and Authorize") {
                     let draft = password
                     password = ""
                     credentials.save(password: draft)

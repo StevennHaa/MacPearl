@@ -103,6 +103,9 @@ final class AppSessionController: ObservableObject {
     }
 
     private func installBindings() {
+        credentials.$isBusy.removeDuplicates().sink { [weak self] busy in
+            self?.notch.setCredentialAuthorizationInProgress(busy)
+        }.store(in: &subscriptions)
         credentials.objectWillChange.merge(with: enrollment.objectWillChange)
             .sink { [weak self] _ in
                 // ObservableObject publishes before assignment; read next turn.
@@ -161,7 +164,7 @@ final class AppSessionController: ObservableObject {
         credentials.cancelAuthorization()
         stopEnrollment()
         passwordDraftGeneration += 1
-        isUpdatingPassword = false
+        isUpdatingPassword = credentials.needsRepair
         authorizationOnly = false
         if !completed { step = .welcome }
         else if !cameraGranted || !accessibilityGranted { step = .permissions }

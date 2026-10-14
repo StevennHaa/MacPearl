@@ -63,7 +63,7 @@ nonisolated enum ProtectedCredentialError: LocalizedError, Equatable {
         case .invalidEnvelope: "The stored credential could not be decrypted."
         case .notConfigured: "Automatic unlock is not configured."
         case .missingEncryptionKey:
-            "The protected encryption key is missing. Remove the stored password and set it up again while signed in."
+            "Your saved unlock credential needs repair. Enter your current Mac password to rebuild it."
         case .authorizationRequired: "Authorize MacPearl while signed in before locking."
         case .passwordVerificationFailed: "macOS could not verify this login password. Check your current Mac password and try again."
         case .keychain(let status): "The protected credential could not be accessed (Keychain error \(status))."
@@ -72,6 +72,7 @@ nonisolated enum ProtectedCredentialError: LocalizedError, Equatable {
 }
 
 nonisolated protocol ProtectedCredentialStoring: Sendable {
+    func credentialHealth() throws -> CredentialHealth
     func hasStoredCredential() throws -> Bool
     func save(password: String) throws -> ProtectedCredentialMaterial
     func loadAuthorizedMaterial() throws -> ProtectedCredentialMaterial
@@ -80,12 +81,39 @@ nonisolated protocol ProtectedCredentialStoring: Sendable {
 }
 
 extension ProtectedCredentialStoring {
+    nonisolated func credentialHealth() throws -> CredentialHealth {
+        try hasStoredCredential() ? .complete : .absent
+    }
     nonisolated func cancelAuthorization() {}
+}
+
+nonisolated enum CredentialHealth: Equatable, Sendable {
+    case absent, complete, missingKey, missingEnvelope, repairPending
+    var needsRepair: Bool { self != .absent && self != .complete }
+    static func classify(envelope: Bool, key: Bool, pending: Bool) -> Self {
+        if pending { return .repairPending }
+        switch (envelope, key) {
+        case (false, false): return .absent
+        case (true, true): return .complete
+        case (true, false): return .missingKey
+        case (false, true): return .missingEnvelope
+        }
+    }
 }
 
 nonisolated struct ProtectedCredentialMaterial: Sendable {
     let envelopeData: Data
     let keyData: Data
+}
+
+nonisolated struct ProtectedCredentialKeyRecovery {
+    func recover(authorize: () throws -> Data, markPending: () throws -> Void,
+                 publishKey: (Data) throws -> Data) throws -> Data {
+        let key = try authorize()
+        try Task.checkCancellation()
+        try markPending()
+        return try publishKey(key)
+    }
 }
 
 nonisolated struct ProtectedCredentialSaveTransaction {
@@ -110,6 +138,7 @@ nonisolated final class KeychainProtectedCredentialStore: ProtectedCredentialSto
     private let service = "com.stevenha.MacPearl.unlock-credential"
     private let account = "primary"
     private let keyAccount = "encryption-key"
+    private let repairAccount = "repair-pending"
     private let contextLock = NSLock()
     nonisolated(unsafe) private var authorizationContext: LAContext?
 
@@ -120,7 +149,15 @@ nonisolated final class KeychainProtectedCredentialStore: ProtectedCredentialSto
         context?.invalidate()
     }
     func hasStoredCredential() throws -> Bool {
-        try hasItem(account: account) && hasItem(account: keyAccount)
+        try credentialHealth() == .complete
+    }
+
+    func credentialHealth() throws -> CredentialHealth {
+        // Evaluate every lookup: access errors must never masquerade as absence.
+        let envelope = try hasItem(account: account)
+        let key = try hasItem(account: keyAccount)
+        let pending = try hasItem(account: repairAccount)
+        return .classify(envelope: envelope, key: key, pending: pending)
     }
 
     func save(password: String) throws -> ProtectedCredentialMaterial {
@@ -128,21 +165,45 @@ nonisolated final class KeychainProtectedCredentialStore: ProtectedCredentialSto
             password: password,
             readExistingKey: { try self.hasItem(account: self.keyAccount) ? self.loadAuthorizedKey() : nil },
             createAuthorizedKey: {
-                guard try !self.hasItem(account: self.account) else {
-                    throw ProtectedCredentialError.missingEncryptionKey
-                }
-                try self.createProtectedKey()
-                return try self.loadAuthorizedKey()
+                // Authenticate a temporary protected key before changing any
+                // live credential records. Cancellation leaves the old pair intact.
+                try ProtectedCredentialKeyRecovery().recover(
+                    authorize: {
+                        let temporaryAccount = "staged-key-" + UUID().uuidString
+                        let key = try self.randomKey()
+                        try self.createProtectedKey(account: temporaryAccount, keyData: key)
+                        defer { _ = SecItemDelete(self.baseQuery(account: temporaryAccount) as CFDictionary) }
+                        return try self.loadAuthorizedKey(account: temporaryAccount)
+                    },
+                    markPending: {
+                        try self.replace(query: self.baseQuery(account: self.repairAccount), value: Data([1]))
+                    },
+                    publishKey: { proposedKey in
+                        do {
+                            try self.createProtectedKey(account: self.keyAccount, keyData: proposedKey)
+                            return proposedKey
+                        } catch ProtectedCredentialError.keychain(errSecDuplicateItem) {
+                            // A noninteractive existence query can miss a protected
+                            // item, or another instance can publish it concurrently.
+                            // Authenticate and reuse the real key; never encrypt
+                            // with the proposed key when Keychain rejected its add.
+                            return try self.loadAuthorizedKey()
+                        }
+                    }
+                )
             },
             writeEnvelope: {
                 try Task.checkCancellation()
                 try self.replace(query: self.baseQuery(account: self.account), value: $0)
+                let status = SecItemDelete(self.baseQuery(account: self.repairAccount) as CFDictionary)
+                guard status == errSecSuccess || status == errSecItemNotFound else {
+                    throw ProtectedCredentialError.keychain(status)
+                }
             }
         )
     }
 
-    private func createProtectedKey() throws {
-        let keyData = try randomKey()
+    private func createProtectedKey(account: String, keyData: Data) throws {
         guard let access = SecAccessControlCreateWithFlags(
             nil,
             kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
@@ -151,18 +212,18 @@ nonisolated final class KeychainProtectedCredentialStore: ProtectedCredentialSto
         ) else {
             throw ProtectedCredentialError.keychain(errSecParam)
         }
-        var item = baseQuery(account: keyAccount)
+        var item = baseQuery(account: account)
         item[kSecValueData as String] = keyData
         item[kSecAttrAccessControl as String] = access
         let keyStatus = SecItemAdd(item as CFDictionary, nil)
-        // If another instance just created the key, read that key rather than
-        // overwrite it and invalidate the other instance's encrypted password.
-        if keyStatus != errSecSuccess && keyStatus != errSecDuplicateItem {
+        // Never overwrite a key created by another process during this repair.
+        if keyStatus != errSecSuccess {
             throw ProtectedCredentialError.keychain(keyStatus)
         }
     }
 
     func loadAuthorizedMaterial() throws -> ProtectedCredentialMaterial {
+        guard try credentialHealth() == .complete else { throw ProtectedCredentialError.missingEncryptionKey }
         var envelopeQuery = baseQuery(account: account)
         envelopeQuery[kSecReturnData as String] = true
         var envelopeResult: CFTypeRef?
@@ -176,8 +237,8 @@ nonisolated final class KeychainProtectedCredentialStore: ProtectedCredentialSto
         return ProtectedCredentialMaterial(envelopeData: envelopeData, keyData: try loadAuthorizedKey())
     }
 
-    private func loadAuthorizedKey() throws -> Data {
-        var keyQuery = baseQuery(account: keyAccount)
+    private func loadAuthorizedKey(account: String? = nil) throws -> Data {
+        var keyQuery = baseQuery(account: account ?? keyAccount)
         keyQuery[kSecReturnData as String] = true
         let context = LAContext()
         context.localizedReason = "Authorize MacPearl to prepare automatic unlock"
@@ -207,7 +268,7 @@ nonisolated final class KeychainProtectedCredentialStore: ProtectedCredentialSto
 
     func delete() throws {
         try Task.checkCancellation()
-        for account in [account, keyAccount] {
+        for account in [account, keyAccount, repairAccount] {
             let status = SecItemDelete(baseQuery(account: account) as CFDictionary)
             guard status == errSecSuccess || status == errSecItemNotFound else {
                 throw ProtectedCredentialError.keychain(status)
@@ -280,6 +341,8 @@ final class ProtectedCredentialController: ObservableObject {
     @Published private(set) var status: ProtectedCredentialStatus = .unavailable
     @Published private(set) var isBusy = false
     @Published private(set) var hasStoredCredential = false
+    @Published private(set) var credentialHealth: CredentialHealth = .absent
+    var needsRepair: Bool { credentialHealth.needsRepair }
 
     private let store: any ProtectedCredentialStoring
     private let codec = ProtectedCredentialCodec()
@@ -294,8 +357,9 @@ final class ProtectedCredentialController: ObservableObject {
         self.store = store ?? KeychainProtectedCredentialStore()
         worker = CredentialWorker(store: self.store, validator: validator)
         do {
-            hasStoredCredential = try self.store.hasStoredCredential()
-            status = hasStoredCredential ? .configured : .unavailable
+            credentialHealth = try self.store.credentialHealth()
+            hasStoredCredential = credentialHealth == .complete
+            status = restingStatus
         } catch {
             status = .failed(error.localizedDescription)
         }
@@ -303,6 +367,11 @@ final class ProtectedCredentialController: ObservableObject {
 
     var isConfigured: Bool {
         hasStoredCredential
+    }
+
+    private var restingStatus: ProtectedCredentialStatus {
+        needsRepair ? .failed(ProtectedCredentialError.missingEncryptionKey.localizedDescription)
+                    : (hasStoredCredential ? .configured : .unavailable)
     }
 
     func save(password: String) {
@@ -316,7 +385,7 @@ final class ProtectedCredentialController: ObservableObject {
     func clearSession() {
         cancelAuthorization()
         cachedMaterial = nil
-        status = hasStoredCredential ? .configured : .unavailable
+        status = restingStatus
     }
 
     func delete() {
@@ -334,7 +403,7 @@ final class ProtectedCredentialController: ObservableObject {
         operation = nil
         store.cancelAuthorization()
         isBusy = false
-        if case .working = status { status = hasStoredCredential ? .configured : .unavailable }
+        if case .working = status { status = restingStatus }
     }
 
     private func perform(_ request: CredentialRequest) {
@@ -352,14 +421,20 @@ final class ProtectedCredentialController: ObservableObject {
                     return
                 }
                 self.cachedMaterial = material
+                self.credentialHealth = material == nil ? .absent : .complete
                 self.hasStoredCredential = material != nil
                 self.status = material == nil ? .unavailable : .sessionReady
                 self.isBusy = false
                 self.operation = nil
             } catch {
+                let health = await worker.health()
                 guard !Task.isCancelled, let self, self.operationID == id else {
                     await self?.reconcileStoredState()
                     return
+                }
+                if let health {
+                    self.credentialHealth = health
+                    self.hasStoredCredential = health == .complete
                 }
                 self.status = .failed(error.localizedDescription)
                 self.isBusy = false
@@ -370,11 +445,12 @@ final class ProtectedCredentialController: ObservableObject {
 
     private func reconcileStoredState() async {
         let generation = operationID
-        let stored = await worker.hasCredential()
-        guard operationID == generation, !isBusy, let stored else { return }
-        hasStoredCredential = stored
+        let health = await worker.health()
+        guard operationID == generation, !isBusy, let health else { return }
+        credentialHealth = health
+        hasStoredCredential = health == .complete
         if cachedMaterial == nil, status == .configured || status == .unavailable {
-            status = stored ? .configured : .unavailable
+            status = restingStatus
         }
     }
 
@@ -411,7 +487,7 @@ private actor CredentialWorker {
         self.store = store
         self.validator = validator
     }
-    func hasCredential() -> Bool? { try? store.hasStoredCredential() }
+    func health() -> CredentialHealth? { try? store.credentialHealth() }
 
     func run(_ request: CredentialRequest) throws -> ProtectedCredentialMaterial? {
         try Task.checkCancellation()

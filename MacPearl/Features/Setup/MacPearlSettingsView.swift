@@ -37,7 +37,7 @@ struct MacPearlSettingsView: View {
                         Button("Authorize Session") { session.requestAuthorization() }.disabled(credentials.isBusy)
                     }
                     Button("Update Password…") { session.updatePassword() }.disabled(credentials.isBusy)
-                } else { Button("Set Up Password…") { session.openSetup() } }
+                } else { Button(credentials.needsRepair ? "Repair Credential…" : "Set Up Password…") { session.updatePassword() } }
                 Text("Authorize once per app launch. Quitting clears the authorized session. Your password is encrypted on this Mac.").font(.caption).foregroundStyle(.secondary)
             }
             Section("About") {
