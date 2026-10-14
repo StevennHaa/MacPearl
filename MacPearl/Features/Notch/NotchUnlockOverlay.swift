@@ -230,7 +230,8 @@ final class NotchUnlockOverlayController: ObservableObject {
         // System Settings and authentication prompts may activate another app.
         // Keep setup visible so the user can return without reopening it.
         panel.hidesOnDeactivate = false
-        panel.level = .floating
+        // Setup must not float above macOS credential/authentication dialogs.
+        panel.level = .normal
         panel.setContentSize(onboardingSize)
         let top = geometry.hasNotch ? screen.frame.maxY : screen.visibleFrame.maxY - 8
         panel.setFrameOrigin(NSPoint(x: screen.frame.midX - onboardingSize.width / 2, y: top - onboardingSize.height))
@@ -247,6 +248,19 @@ final class NotchUnlockOverlayController: ObservableObject {
         panel?.hidesOnDeactivate = false
         panel?.level = .screenSaver
         hide(immediately: true)
+    }
+
+    func setCredentialAuthorizationInProgress(_ inProgress: Bool) {
+        guard onboardingContent != nil else { return }
+        if inProgress {
+            // Keychain UI belongs to another process. Yield before the worker
+            // starts authentication rather than competing for window ordering.
+            panel?.orderOut(nil)
+        } else if LockSessionMonitor.currentLockState() == false {
+            // Restore setup after success/cancellation without stealing focus
+            // from another application's active window.
+            panel?.orderFront(nil)
+        }
     }
 
     private func hide(immediately: Bool = false) {
