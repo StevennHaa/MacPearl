@@ -1,0 +1,109 @@
+import AppKit
+import SwiftUI
+
+struct MacPearlOnboardingView: View {
+    @ObservedObject var session: AppSessionController
+    @ObservedObject private var credentials: ProtectedCredentialController
+    @ObservedObject private var enrollment: EnrollmentController
+    @ObservedObject private var camera: CameraSessionController
+    @State private var password = ""
+
+    init(session: AppSessionController) {
+        self.session = session
+        credentials = session.credentials
+        enrollment = session.enrollment
+        camera = session.recognition.camera
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            HStack {
+                Label("MacPearl", systemImage: "faceid").foregroundStyle(.cyan)
+                Spacer()
+                Text(session.authorizationOnly ? "Authorize" : "Step \(session.step.rawValue + 1) of 5")
+                    .foregroundStyle(.secondary)
+            }
+            Text(session.step.title).font(.largeTitle.bold())
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) { content }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            Divider()
+            HStack {
+                Button("Later") { password = ""; session.closeSetup() }
+                Spacer()
+                if session.step != .welcome && !session.authorizationOnly {
+                    Button("Back") { password = ""; session.back() }.disabled(credentials.isBusy)
+                }
+                if !session.authorizationOnly {
+                    Button(session.step == .review ? "Finish Setup" : "Continue") { session.advance() }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(!session.canContinue || credentials.isBusy)
+                }
+            }
+        }
+        .padding(28)
+        .onChange(of: session.passwordDraftGeneration) { _, _ in password = "" }
+        .onDisappear { password = "" }
+    }
+
+    @ViewBuilder private var content: some View {
+        switch session.step {
+        case .welcome:
+            Text("Look at your Mac to unlock your signed-in session.").font(.title2)
+            Label("Face processing stays on your Mac.", systemImage: "lock.shield")
+            Text("Your password is encrypted locally. Authorize once each time MacPearl opens; the session stays authorized until you quit.")
+            Text("Camera-based recognition is not equivalent to Face ID or Touch ID. Keep your normal password available.").foregroundStyle(.secondary)
+        case .permissions:
+            permission("Camera", granted: session.cameraGranted, action: session.requestCamera)
+            Text("Used to enroll and recognize your face locally.").foregroundStyle(.secondary)
+            permission("Accessibility", granted: session.accessibilityGranted, action: session.requestAccessibility)
+            Text("Used to submit your password only after a verified lock-screen match.").foregroundStyle(.secondary)
+            Button("Open System Settings") { NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/System Settings.app")) }
+            Button("Check Permissions") { session.refresh() }
+        case .enrollment:
+            if enrollment.isActive {
+                CameraPreviewView(session: camera.session, faces: camera.faceDetectionResult.faces, captureState: camera.faceCaptureState)
+                    .frame(height: 210).clipShape(RoundedRectangle(cornerRadius: 16))
+            }
+            switch enrollment.state {
+            case .capturing(let pose, let completed): Text("Pose \(completed + 1) of 3: \(pose.instruction)")
+            case .processing: ProgressView("Processing pose…")
+            case .enrolled: Label("Your local face template is ready.", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+            case .failed(let message): Text(message).foregroundStyle(.orange)
+            case .idle: Text("Capture three poses in good light. Keep your face centered.")
+            }
+            if !session.hasFace && !enrollment.isActive { Button("Start Enrollment") { session.beginEnrollment() } }
+        case .credential:
+            Text("Authorize automatic unlock for this app session. The decryption key stays in memory until MacPearl quits.")
+            if !credentials.hasStoredCredential || session.isUpdatingPassword {
+                SecureField("Mac login password", text: $password).textFieldStyle(.roundedBorder).disabled(credentials.isBusy)
+                Button("Verify, Save and Authorize") {
+                    let draft = password
+                    password = ""
+                    credentials.save(password: draft)
+                }.disabled(password.isEmpty || credentials.isBusy)
+            } else if credentials.status != .sessionReady {
+                Button("Authorize Session") { session.requestAuthorization() }.disabled(credentials.isBusy)
+            }
+            if credentials.isBusy { ProgressView() }
+            Text(credentials.status.message).foregroundStyle(.secondary)
+            if credentials.hasStoredCredential && !session.isUpdatingPassword {
+                Button("Update Password…") { session.updatePassword() }.disabled(credentials.isBusy)
+            }
+            Text("Enter your current Mac login password. If you change it in macOS, update it here. Verification is performed only when you save or authorize—not repeatedly at the lock screen.").font(.caption).foregroundStyle(.secondary)
+        case .review:
+            Label("Ready for your next locked session", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+            Text("After finishing, press Control–Command–Q and look at the camera. Your normal password remains available.")
+            MacPearlPreferencesView(session: session)
+        }
+    }
+
+    private func permission(_ title: String, granted: Bool, action: @escaping () -> Void) -> some View {
+        HStack {
+            Label(title, systemImage: granted ? "checkmark.circle.fill" : "circle")
+            Spacer()
+            if !granted { Button("Allow", action: action) }
+        }
+    }
+}

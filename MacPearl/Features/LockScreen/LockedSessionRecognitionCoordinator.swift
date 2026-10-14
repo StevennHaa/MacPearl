@@ -129,6 +129,20 @@ final class LockedSessionRecognitionCoordinator: ObservableObject {
     private var scanStartTask: Task<Void, Never>?
     private var unlockTask: Task<Void, Never>?
     private var lastCaptureIssue: FaceCaptureIssue?
+    private var automaticUnlockEnabled = true
+
+    func setAutomaticUnlockEnabled(_ enabled: Bool) {
+        automaticUnlockEnabled = enabled
+        if !enabled {
+            scanStartTask?.cancel()
+            unlockTask?.cancel()
+            if isLockedSessionActive {
+                recognition.cancel(using: camera)
+                isLockedSessionActive = false
+                if !isPreviewVisible { camera.stop() }
+            }
+        }
+    }
     private let logger = Logger(
         subsystem: "com.stevenha.MacPearl",
         category: "locked-session-recognition"
@@ -228,6 +242,8 @@ final class LockedSessionRecognitionCoordinator: ObservableObject {
         if attemptBudget.update(snapshot: snapshot) {
             unlocker.reset()
         }
+        // Preserve the ready generation while setup owns the camera.
+        if snapshot.isLocked, !automaticUnlockEnabled { return }
         let decision = lifecycle.reconcile(
             snapshot: snapshot,
             readyGeneration: suppliedGeneration ?? lockSessionMonitor.lockedSessionReadyGeneration,
@@ -236,6 +252,7 @@ final class LockedSessionRecognitionCoordinator: ObservableObject {
 
         switch decision {
         case .start:
+            guard automaticUnlockEnabled else { break }
             guard let template else {
                 status = .missingTemplate
                 return
@@ -307,6 +324,7 @@ final class LockedSessionRecognitionCoordinator: ObservableObject {
         case .cooldown(let until):
             status = .cooldown(until: until)
         case .unlocked(let score):
+            guard automaticUnlockEnabled else { return }
             guard !unlockAttemptedForSession else { return }
             guard case .sessionReady = credentialController.status else {
                 status = .recognized(score: score)
@@ -334,6 +352,7 @@ final class LockedSessionRecognitionCoordinator: ObservableObject {
                         self.status = .unlockFailed(message)
                         self.lastUnlockAttemptMessage = message
                         self.logger.notice("Password submission did not unlock macOS within three seconds")
+                        self.credentialController.requirePasswordVerification()
                     }
                 case .rejected(let message):
                     self.status = .unlockFailed(message)

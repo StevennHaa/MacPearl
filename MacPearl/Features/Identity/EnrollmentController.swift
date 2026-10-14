@@ -89,6 +89,13 @@ final class EnrollmentController: ObservableObject {
         camera.retakeFace()
     }
 
+    func reloadTemplate() {
+        enrollmentID = UUID()
+        embeddings.removeAll()
+        state = .idle
+        restoreTemplate()
+    }
+
     private func accept(
         _ embedding: FaceEmbedding,
         for pose: FaceCapturePose,

@@ -78,6 +78,8 @@ struct NotchOverlayGeometry: Equatable {
 final class NotchUnlockOverlayController: ObservableObject {
     @Published private(set) var phase: NotchUnlockPhase = .hidden
     @Published private(set) var geometry = NotchOverlayGeometry(notchWidth: 180, notchHeight: 32, hasNotch: true)
+    @Published private(set) var onboardingContent: AnyView?
+    @Published private(set) var onboardingSize = CGSize(width: 600, height: 620)
 
     private var presentation = NotchUnlockPresentation()
     private var subscriptions = Set<AnyCancellable>()
@@ -110,6 +112,10 @@ final class NotchUnlockOverlayController: ObservableObject {
 
     private func render(snapshot: LockSessionSnapshot, status: LockedSessionRecognitionStatus, camera: CameraState, active: Bool) {
         let next = presentation.update(snapshot: snapshot, status: status, camera: camera, active: active)
+        if onboardingContent != nil {
+            if snapshot.isLocked || snapshot.isSleeping { dismissOnboarding() }
+            return
+        }
         let enabled = UserDefaults.standard.object(forKey: "showNotchAnimation") as? Bool ?? true
         guard enabled else { previewTask?.cancel(); previewTask = nil; hide(immediately: true); return }
         if previewTask != nil {
@@ -140,6 +146,7 @@ final class NotchUnlockOverlayController: ObservableObject {
     }
 
     func preview() {
+        guard onboardingContent == nil else { return }
         guard latest?.0.isLocked == false else { return }
         previewTask?.cancel()
         dismissTask?.cancel()
@@ -181,6 +188,7 @@ final class NotchUnlockOverlayController: ObservableObject {
             panel = window
         }
         guard let panel else { return }
+        if onboardingContent == nil { panel.setContentSize(CGSize(width: 380, height: 160)) }
         let top = geometry.hasNotch ? screen.frame.maxY : screen.visibleFrame.maxY - 8
         panel.setFrameOrigin(NSPoint(x: screen.frame.midX - panel.frame.width / 2, y: top - panel.frame.height))
         // Render the compact footprint before expanding on the next run loop.
@@ -205,6 +213,42 @@ final class NotchUnlockOverlayController: ObservableObject {
         delegated = false
     }
 
+    func presentOnboarding(_ content: AnyView, onClose: @escaping () -> Void) {
+        guard LockSessionMonitor.currentLockState() == false,
+              let screen = NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 }) ?? NSScreen.main else { return }
+        previewTask?.cancel()
+        previewTask = nil
+        hide(immediately: true)
+        show(phase: .hidden, locked: false)
+        guard let panel else { return }
+        geometry = .forScreen(screen)
+        onboardingSize = CGSize(width: min(600, screen.visibleFrame.width - 32), height: min(640, screen.visibleFrame.height - 24))
+        onboardingContent = content
+        panel.allowsKeyboardFocus = true
+        panel.onUserClose = onClose
+        panel.ignoresMouseEvents = false
+        // System Settings and authentication prompts may activate another app.
+        // Keep setup visible so the user can return without reopening it.
+        panel.hidesOnDeactivate = false
+        panel.level = .floating
+        panel.setContentSize(onboardingSize)
+        let top = geometry.hasNotch ? screen.frame.maxY : screen.visibleFrame.maxY - 8
+        panel.setFrameOrigin(NSPoint(x: screen.frame.midX - onboardingSize.width / 2, y: top - onboardingSize.height))
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
+    }
+
+    func dismissOnboarding() {
+        guard onboardingContent != nil else { return }
+        onboardingContent = nil
+        panel?.allowsKeyboardFocus = false
+        panel?.onUserClose = nil
+        panel?.ignoresMouseEvents = true
+        panel?.hidesOnDeactivate = false
+        panel?.level = .screenSaver
+        hide(immediately: true)
+    }
+
     private func hide(immediately: Bool = false) {
         dismissTask?.cancel()
         dismissTask = nil
@@ -227,8 +271,11 @@ final class NotchUnlockOverlayController: ObservableObject {
 }
 
 private final class NotchUnlockPanel: NSPanel {
-    override var canBecomeKey: Bool { false }
+    var allowsKeyboardFocus = false
+    var onUserClose: (() -> Void)?
+    override var canBecomeKey: Bool { allowsKeyboardFocus }
     override var canBecomeMain: Bool { false }
+    override func cancelOperation(_ sender: Any?) { onUserClose?() }
 }
 
 private struct NotchUnlockOverlayView: View {
@@ -253,7 +300,17 @@ private struct NotchUnlockOverlayView: View {
         }
     }
 
+    @ViewBuilder
     var body: some View {
+        if let content = controller.onboardingContent {
+            content.padding(.top, controller.geometry.notchHeight)
+                .frame(width: controller.onboardingSize.width, height: controller.onboardingSize.height)
+                .background(.black, in: UnevenRoundedRectangle(topLeadingRadius: 10, bottomLeadingRadius: 28, bottomTrailingRadius: 28, topTrailingRadius: 10))
+                .preferredColorScheme(.dark)
+        } else { unlockBody }
+    }
+
+    private var unlockBody: some View {
         VStack(spacing: 0) {
             Color.clear.frame(height: controller.geometry.hasNotch ? controller.geometry.notchHeight : 12)
             if expanded {
