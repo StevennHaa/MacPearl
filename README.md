@@ -1,51 +1,114 @@
 # MacPearl
 
-MacPearl is an experimental macOS app to allow FaceID for Macbook
+**Look at your Mac to unlock it.**
+
+MacPearl is an experimental macOS menu bar app that unlocks your signed-in session with on-device face recognition. Enroll once, authorize your session, lock your Mac — then look at the camera to unlock.
+
+> Camera-based recognition is a convenience feature, not a replacement for Touch ID or Face ID. Always keep your password available.
+
+---
+
+## Features
+
+- **Local face unlock** — Recognition runs entirely on your Mac with Core ML and Vision. Nothing is sent to the cloud.
+- **Menu bar companion** — Lives in the menu bar with guided onboarding for camera, Accessibility, enrollment, and credentials.
+- **Guarded automatic unlock** — After a verified lock-screen face match, MacPearl can submit your stored password through Accessibility — only when the screen is locked, the console account matches, and the session is authorized.
+- **Notch unlock overlay** — Animated feedback in the MacBook notch while scanning and unlocking.
+- **Launch at login** — Optional start so MacPearl is ready when you wake your Mac.
+- **Privacy-first credentials** — Your Mac password is encrypted with AES-GCM; the key lives in the Keychain behind user-presence protection and stays in memory only for the authorized app session.
+
+---
 
 ## Requirements
 
 - macOS 15 or later
-- Xcode 27 or later
+- A Mac with a built-in or supported camera
+- Xcode (latest stable) to build from source
+- Camera and Accessibility permissions
 
-## Open and run
+---
+
+## Getting started
 
 1. Open `MacPearl.xcodeproj` in Xcode.
-2. Select the `MacPearl` scheme and `My Mac` destination.
-3. Press Command-R.
+2. Select the **MacPearl** scheme and **My Mac** as the destination.
+3. Press **⌘R** to build and run.
+4. Complete setup from the menu bar:
+   1. Allow **Camera** and **Accessibility**
+   2. Enroll your face (three poses)
+   3. Store and authorize your Mac password
+   4. Choose **Authorize Session** when MacPearl starts (required after each quit)
+
+For setup details and safety checks, see [Docs/guarded-unlock.md](Docs/guarded-unlock.md).
+
+---
+
+## How it works
+
+```text
+Lock / wake
+    → Verify lock state + active console account (CoreGraphics / IOKit)
+    → Local face recognition (Vision + InsightFace MobileFaceNet via Core ML)
+    → Match + authorized credential session + Accessibility trusted
+    → Submit password once per lock session
+```
+
+MacPearl runs in your user session. It does **not** install a system authorization plug-in or replace the login window. Startup, FileVault, and login-after-logout are out of scope.
+
+---
 
 ## Project layout
 
 ```text
 MacPearl/
-├── App/                 App entry point and app-wide setup
-├── Features/            User-facing features, grouped by feature
-│   └── Home/            Initial screen
-├── Resources/           Asset catalogs and future bundled resources
-└── SupportingFiles/     Entitlements and other build support files
-MacPearlAuthorizationPlugin/       Diagnostic authorization plug-in
-MacPearlAuthorizationPluginTests/  Authorization lifecycle tests
+├── MacPearl/                    Main menu bar app (SwiftUI)
+│   ├── App/                     Entry point and session orchestration
+│   ├── Features/
+│   │   ├── Camera/              Capture, preview, face detection
+│   │   ├── Identity/            Enrollment, embeddings, matching
+│   │   ├── LockScreen/          Lock monitoring, credentials, unlock
+│   │   ├── Notch/               Notch unlock overlay
+│   │   └── Setup/               Onboarding and settings
+│   └── Resources/               Assets and Core ML model
+├── MacPearlTests/               App and unlock tests
+├── Docs/                        Unlock design and spike notes
+├── MacPearlAuthorizationPlugin/ Diagnostic research only (not used by the app)
+├── MacPearlCameraBroker/        Diagnostic research only (not used by the app)
+└── Tools/MacPearlAuthCtl/       Helper for diagnostic spike installs
 ```
 
-Keep camera capture, enrollment, recognition, and unlock integration in separate feature folders as they are added. Shared infrastructure should only move into a `Core` folder after two or more features actually use it.
+The authorization plug-in and camera broker targets are retained as research artifacts. The shipping unlock path does not install or enable them. Background: [Docs/authorization-plugin-spike.md](Docs/authorization-plugin-spike.md).
 
-## Phase 5 user-session foundation
+---
 
-MacPearl uses a launch-at-login user-session architecture. Lock and wake
-notifications trigger checks of the real lock state through CoreGraphics and
-IOKit, with the active console account verified on both paths. Optional
-automatic unlock requires face enrollment, Accessibility permission, and a
-credential session authorized while signed in. Authorization lasts until
-MacPearl quits or the stored password is removed. Sleep/wake does not reset the
-one-attempt password limit; a confirmed macOS unlock does. This is a convenience
-feature, not a replacement for Touch ID or Face ID. See
-[setup and manual validation](Docs/guarded-unlock.md).
+## Security notes
 
-The previous authorization plug-in and camera broker remain diagnostic spike targets only. They are not installed or enabled by the main app. See `Docs/authorization-plugin-spike.md` for the findings and limitations.
+- Face templates and credentials stay on-device.
+- Automatic unlock requires an explicit authorized session each time MacPearl launches.
+- At most **one** password attempt per lock session; sleep/wake does not reset that limit.
+- Fast User Switching is guarded — MacPearl will not enter your password into another account’s lock screen.
+- Manual unlock with your password always remains available.
 
-## Phase 5.1A authorization plug-in spike
+---
 
-The `MacPearlAuthorizationPlugin` target exports the authorization plug-in entry point and recognizes only the `FaceUnlock` mechanism. This phase is diagnostic and always returns `kAuthorizationResultDeny`; it cannot unlock a session.
+## Tech stack
 
-The target uses automatic signing. For Apple Development signing, add an Apple ID under Xcode Settings → Accounts and select the same Personal Team for the MacPearl app, plug-in, and test targets. A local build without a configured team is ad hoc signed and must not be installed as a system authorization plug-in.
+| Area | Technologies |
+|------|----------------|
+| UI | SwiftUI, AppKit, MenuBarExtra |
+| Vision | Vision, AVFoundation, Core ML |
+| Model | InsightFace MobileFaceNet (bundled `.mlpackage`) |
+| Lock state | CoreGraphics, IOKit |
+| Credentials | Keychain (`userPresence`), AES-GCM |
 
-Phase 5.1A does not include an installer and does not modify the macOS authorization database.
+---
+
+## Status
+
+Experimental / early beta (`0.1.0`). Built for learning and personal use on a signed-in Mac session. Expect rough edges; contributions and feedback are welcome.
+
+---
+
+## License
+
+Add a license of your choice before publishing widely. The bundled InsightFace MobileFaceNet model retains its own upstream license terms.
