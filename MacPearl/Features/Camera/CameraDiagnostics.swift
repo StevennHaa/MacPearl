@@ -26,6 +26,11 @@ enum CameraDiagnostics {
         )
     }
 
+    static func startupTiming(stage: String, since start: DispatchTime) {
+        let elapsed = Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000
+        logger.info("Camera startup \(stage, privacy: .public): \(elapsed, format: .fixed(precision: 1), privacy: .public) ms")
+    }
+
     static func noUsableCameraFound() {
         logger.warning("No usable camera was found")
     }

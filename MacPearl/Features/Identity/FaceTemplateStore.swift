@@ -9,6 +9,7 @@ import Security
 protocol FaceTemplateStoring: Sendable {
     func load() throws -> UserFaceTemplate?
     func save(_ template: UserFaceTemplate) throws
+    func delete() throws
 }
 
 final class KeychainFaceTemplateStore: FaceTemplateStoring, @unchecked Sendable {
@@ -46,6 +47,13 @@ final class KeychainFaceTemplateStore: FaceTemplateStoring, @unchecked Sendable 
                 throw FaceTemplateStoreError.keychain(addStatus)
             }
         } else if status != errSecSuccess {
+            throw FaceTemplateStoreError.keychain(status)
+        }
+    }
+
+    func delete() throws {
+        let status = SecItemDelete(baseQuery as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
             throw FaceTemplateStoreError.keychain(status)
         }
     }

@@ -12,6 +12,10 @@ struct UserFaceTemplate: Equatable, Sendable {
     let model: FaceEmbeddingModelMetadata
     let preprocessingVersion: String
     let embeddings: [FaceCapturePose: FaceEmbedding]
+
+    var isCompatibleWithCurrentModel: Bool {
+        preprocessingVersion == FaceImagePreprocessor.version && model == FaceEmbeddingModelProvider.metadata
+    }
 }
 
 enum EnrollmentState: Equatable, Sendable {
@@ -25,6 +29,7 @@ enum EnrollmentState: Equatable, Sendable {
 @MainActor
 final class EnrollmentController: ObservableObject {
     @Published private(set) var state: EnrollmentState = .idle
+    @Published private(set) var requiresReenrollment = false
 
     private var model: (any FaceEmbeddingModel)?
     private var embeddings: [FaceCapturePose: FaceEmbedding] = [:]
@@ -96,6 +101,21 @@ final class EnrollmentController: ObservableObject {
         restoreTemplate()
     }
 
+    func deleteTemplate() throws {
+        // Invalidate in-flight embedding tasks before touching persistent data.
+        enrollmentID = UUID()
+        embeddings.removeAll()
+        model = nil
+        state = .idle
+        do {
+            try templateStore.delete()
+            requiresReenrollment = false
+        } catch {
+            state = .failed("The saved face could not be removed. Try again. \(error.localizedDescription)")
+            throw error
+        }
+    }
+
     private func accept(
         _ embedding: FaceEmbedding,
         for pose: FaceCapturePose,
@@ -117,18 +137,28 @@ final class EnrollmentController: ObservableObject {
             embeddings: embeddings
         )
         try templateStore.save(template)
+        requiresReenrollment = false
         state = .enrolled(template)
         camera.finishFaceCapture()
     }
 
     private func restoreTemplate() {
+        requiresReenrollment = false
         do {
             if let template = try templateStore.load() {
+                guard template.isCompatibleWithCurrentModel else {
+                    throw RecognitionError.incompatibleTemplate
+                }
                 state = .enrolled(template)
             }
+        } catch RecognitionError.incompatibleTemplate {
+            requiresReenrollment = true
+            state = .failed("The recognition model has changed. Enroll your face again before using automatic unlock.")
         } catch FaceTemplateStoreError.unsupportedVersion(1) {
+            requiresReenrollment = true
             state = .failed("The stored template uses older face preprocessing. Enroll again to continue.")
         } catch FaceTemplateStoreError.incompatiblePreprocessingVersion {
+            requiresReenrollment = true
             state = .failed("Lighting normalization has improved. Enroll again to update your face template.")
         } catch {
             state = .failed(error.localizedDescription)

@@ -185,6 +185,12 @@ final class LockedSessionRecognitionCoordinator: ObservableObject {
         reconcile()
     }
 
+    func clearTemplate() {
+        setAutomaticUnlockEnabled(false)
+        template = nil
+        status = .missingTemplate
+    }
+
     private func installBindings() {
         camera.$faceCaptureState
             .sink { [weak self] state in
@@ -369,6 +375,10 @@ final class LockedSessionRecognitionCoordinator: ObservableObject {
     private func loadTemplate() {
         do {
             template = try templateStore.load()
+            if let template, !template.isCompatibleWithCurrentModel {
+                self.template = nil
+                throw RecognitionError.incompatibleTemplate
+            }
         } catch {
             template = nil
             status = .failed(error.localizedDescription)

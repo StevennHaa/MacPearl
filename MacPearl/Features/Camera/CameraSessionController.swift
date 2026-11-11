@@ -69,6 +69,7 @@ final class CameraSessionController: NSObject, ObservableObject, @unchecked Send
     private var recoveryDeadline: DispatchTime?
     private var retryWorkItem: DispatchWorkItem?
     private var watchdogTimer: DispatchSourceTimer?
+    private var startupRequestedAt: DispatchTime?
 
     private let recoveryTimeout: TimeInterval = 5
     private let retryDelay: TimeInterval = 0.75
@@ -98,6 +99,7 @@ final class CameraSessionController: NSObject, ObservableObject, @unchecked Send
     }
 
     func start() {
+        let requestedAt = DispatchTime.now()
         resetFaceCapture()
         sessionQueue.async { [weak self] in
             self?.shouldRun = true
@@ -105,13 +107,13 @@ final class CameraSessionController: NSObject, ObservableObject, @unchecked Send
 
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
-            startAuthorizedCamera()
+            startAuthorizedCamera(requestedAt: requestedAt)
         case .notDetermined:
             publish(.requestingPermission)
             AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
                 guard let self else { return }
                 if granted {
-                    self.startAuthorizedCamera()
+                    self.startAuthorizedCamera(requestedAt: requestedAt)
                 } else {
                     self.publish(.unauthorized)
                 }
@@ -159,16 +161,22 @@ final class CameraSessionController: NSObject, ObservableObject, @unchecked Send
         }
     }
 
-    private func startAuthorizedCamera() {
+    private func startAuthorizedCamera(requestedAt: DispatchTime) {
         sessionQueue.async { [weak self] in
             guard let self else { return }
             guard self.shouldRun else { return }
+            // A duplicate start (for example preview and lock setup) must not
+            // stop/restart a healthy running camera.
+            if !self.isInterrupted, self.session.isRunning,
+               let device = self.currentInput?.device, self.isUsable(device) {
+                return
+            }
             self.isInterrupted = false
-            self.beginAttempt(recovering: false)
+            self.beginAttempt(recovering: false, requestedAt: requestedAt)
         }
     }
 
-    private func beginAttempt(recovering: Bool) {
+    private func beginAttempt(recovering: Bool, requestedAt: DispatchTime = .now()) {
         dispatchPrecondition(condition: .onQueue(sessionQueue))
         guard shouldRun, !isInterrupted else { return }
 
@@ -177,6 +185,7 @@ final class CameraSessionController: NSObject, ObservableObject, @unchecked Send
         recoveryDeadline = .now() + recoveryTimeout
         isWaitingForFirstFrame = false
         lastFrameTime = nil
+        startupRequestedAt = requestedAt
         publish(recovering ? .recovering : .starting)
         startWatchdogIfNeeded()
         attemptToStartCamera()
@@ -194,13 +203,17 @@ final class CameraSessionController: NSObject, ObservableObject, @unchecked Send
 
         do {
             CameraDiagnostics.selectedDevice(camera)
+            let configurationStartedAt = DispatchTime.now()
             try configureSession(for: camera)
+            CameraDiagnostics.startupTiming(stage: "configuration", since: configurationStartedAt)
 
             // A full restart gives a stalled session a chance to produce frames again.
             if session.isRunning {
                 session.stopRunning()
             }
+            let hardwareStartAt = DispatchTime.now()
             session.startRunning()
+            CameraDiagnostics.startupTiming(stage: "startRunning", since: hardwareStartAt)
 
             guard session.isRunning, isUsable(camera) else {
                 scheduleRetryOrBecomeUnavailable()
@@ -216,6 +229,13 @@ final class CameraSessionController: NSObject, ObservableObject, @unchecked Send
 
     private func configureSession(for camera: AVCaptureDevice) throws {
         dispatchPrecondition(condition: .onQueue(sessionQueue))
+
+        // stop() retains the configured input/output. Reuse that graph on the
+        // next lock instead of committing an identical configuration again.
+        if currentInput?.device.uniqueID == camera.uniqueID,
+           session.outputs.contains(where: { $0 === videoOutput }) {
+            return
+        }
 
         session.beginConfiguration()
         defer { session.commitConfiguration() }
@@ -371,6 +391,10 @@ final class CameraSessionController: NSObject, ObservableObject, @unchecked Send
         guard isWaitingForFirstFrame else { return }
 
         isWaitingForFirstFrame = false
+        if let startupRequestedAt {
+            CameraDiagnostics.startupTiming(stage: "request to first frame", since: startupRequestedAt)
+            self.startupRequestedAt = nil
+        }
         recoveryDeadline = nil
         retryWorkItem?.cancel()
         retryWorkItem = nil
@@ -384,6 +408,7 @@ final class CameraSessionController: NSObject, ObservableObject, @unchecked Send
         recoveryDeadline = nil
         isWaitingForFirstFrame = false
         lastFrameTime = nil
+        startupRequestedAt = nil
     }
 
     private func observeCameraAvailability() {
