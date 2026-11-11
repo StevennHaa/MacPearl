@@ -53,8 +53,7 @@ struct FaceTemplateMatcher: Sendable {
     ]
 
     init(template: UserFaceTemplate, threshold: Float) throws {
-        guard template.preprocessingVersion == FaceImagePreprocessor.version,
-              template.model == FaceEmbeddingModelProvider.metadata else {
+        guard template.isCompatibleWithCurrentModel else {
             throw RecognitionError.incompatibleTemplate
         }
         let ordered = try FaceCapturePose.allCases.map { pose in

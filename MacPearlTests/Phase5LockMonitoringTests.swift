@@ -3,6 +3,26 @@ import Foundation
 @testable import MacPearl
 
 final class Phase5LockMonitoringTests: XCTestCase {
+    @MainActor
+    func testConfirmedLockStartsWithoutWaitingForSettledRetry() {
+        let probe = StartupLockProbe(false)
+        let monitor = LockSessionMonitor(lockStateProvider: { probe.value })
+        probe.value = true
+        monitor.scheduleSettledCheck(.screenLocked)
+        XCTAssertTrue(monitor.snapshot.isLocked)
+        XCTAssertEqual(monitor.lockedSessionReadyGeneration, 1)
+    }
+
+    @MainActor
+    func testUncertainLockStillWaitsForAuthoritativeState() {
+        let probe = StartupLockProbe(false)
+        let monitor = LockSessionMonitor(lockStateProvider: { probe.value })
+        probe.value = nil
+        monitor.scheduleSettledCheck(.screenLocked)
+        XCTAssertFalse(monitor.snapshot.isLocked)
+        XCTAssertEqual(monitor.lockedSessionReadyGeneration, 0)
+    }
+
     func testQuartzLockFlagCannotAuthorizeAnotherConsoleAccount() {
         let ownSession: [String: Any] = [
             "kCGSSessionOnConsoleKey": true,
@@ -320,9 +340,16 @@ final class Phase5LockMonitoringTests: XCTestCase {
     }
 }
 
+@MainActor
+private final class StartupLockProbe {
+    var value: Bool?
+    init(_ value: Bool?) { self.value = value }
+}
+
 private struct EmptyLockTestTemplateStore: FaceTemplateStoring {
     func load() throws -> UserFaceTemplate? { nil }
     func save(_ template: UserFaceTemplate) throws {}
+    func delete() throws {}
 }
 
 private struct EmptyLockTestCredentialStore: ProtectedCredentialStoring {

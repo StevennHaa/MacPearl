@@ -11,21 +11,30 @@ struct CameraPreviewView: NSViewRepresentable {
     let session: AVCaptureSession
     let faces: [DetectedFace]
     let captureState: FaceCaptureState
+    var videoGravity: AVLayerVideoGravity = .resizeAspectFill
 
     func makeNSView(context: Context) -> CameraPreviewNSView {
-        CameraPreviewNSView(session: session, faces: faces, captureState: captureState)
+        let view = CameraPreviewNSView(session: session, faces: faces, captureState: captureState)
+        view.videoGravity = videoGravity
+        return view
     }
 
     func updateNSView(_ nsView: CameraPreviewNSView, context: Context) {
         nsView.session = session
         nsView.faces = faces
         nsView.captureState = captureState
+        nsView.videoGravity = videoGravity
     }
 }
 
 final class CameraPreviewNSView: NSView {
     private let previewLayer = AVCaptureVideoPreviewLayer()
     private let faceOverlayLayer = CAShapeLayer()
+
+    var videoGravity: AVLayerVideoGravity {
+        get { previewLayer.videoGravity }
+        set { previewLayer.videoGravity = newValue }
+    }
 
     var faces: [DetectedFace] = [] {
         didSet { updateFaceOverlay() }

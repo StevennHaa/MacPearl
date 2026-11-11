@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import SwiftUI
 
 struct MacPearlOnboardingView: View {
@@ -63,8 +64,9 @@ struct MacPearlOnboardingView: View {
             Button("Check Permissions") { session.refresh() }
         case .enrollment:
             if enrollment.isActive {
-                CameraPreviewView(session: camera.session, faces: camera.faceDetectionResult.faces, captureState: camera.faceCaptureState)
-                    .frame(height: 210).clipShape(RoundedRectangle(cornerRadius: 16))
+                CameraPreviewView(session: camera.session, faces: camera.faceDetectionResult.faces,
+                                  captureState: camera.faceCaptureState, videoGravity: .resizeAspect)
+                    .frame(height: 350).clipShape(RoundedRectangle(cornerRadius: 16))
             }
             switch enrollment.state {
             case .capturing(let pose, let completed): Text("Pose \(completed + 1) of 3: \(pose.instruction)")

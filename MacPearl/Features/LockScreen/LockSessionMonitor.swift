@@ -203,6 +203,13 @@ final class LockSessionMonitor: ObservableObject {
 
     func scheduleSettledCheck(_ event: LockSessionEvent) {
         refreshTask?.cancel()
+        // Usually the state is already settled. Probe immediately rather than
+        // delaying camera startup by 150 ms on every lock/wake notification.
+        let expectedLocked = event != .screenUnlocked
+        if lockStateProvider() == expectedLocked {
+            process(event, authoritativeLocked: expectedLocked)
+            return
+        }
         refreshTask = Task { [weak self] in
             // Lock notifications can precede the console lock flag. A single
             // failed lookup previously left recognition idle until display wake.
@@ -210,7 +217,6 @@ final class LockSessionMonitor: ObservableObject {
                 try? await Task.sleep(for: .milliseconds(150))
                 guard !Task.isCancelled, let self else { return }
                 let locked = self.lockStateProvider()
-                let expectedLocked = event != .screenUnlocked
                 if locked == expectedLocked {
                     self.process(event, authoritativeLocked: expectedLocked)
                     return
