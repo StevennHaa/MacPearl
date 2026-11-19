@@ -11,9 +11,12 @@ publisher identity or Apple notarization.
    If offered, choose Open Anyway for MacPearl and confirm the system prompt.
    Managed Macs may prevent this override.
    If macOS reports malware or damage, stop and contact the download provider.
-4. Complete setup: Camera permission, Accessibility permission, face enrollment
-   and Store and Authorize for your Mac password. Use Authorize Session again
-   after quitting or restarting MacPearl.
+4. Allow Camera and Accessibility access. After enabling access in System
+   Settings, return to MacPearl and click Check Permissions, then Continue.
+5. Enroll your face, then enter your Mac password and click Verify, Save and
+   Authorize. Approve the native macOS authorization prompt. When MacPearl
+   confirms authorization succeeded, click Continue and Finish Setup.
+   Use Authorize Session again after quitting or restarting MacPearl.
 
 Keep macOS security protections enabled. No Terminal bypass is needed in these
 instructions. Only approve a download obtained from the intended provider.

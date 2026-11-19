@@ -121,10 +121,54 @@ final class EnrollmentAndRemovalTests: XCTestCase {
         guard case .failed = credentials.status else { return XCTFail("Expected visible deletion failure") }
     }
 
-    private func session(store: RemovalTemplateStore? = nil, credentials: ProtectedCredentialController? = nil) throws -> (AppSessionController, UserDefaults, String) {
+    func testSuccessfulPasswordUpdateExitsEntryModeDuringInitialSetup() async throws {
+        let (session, defaults, suite) = try session(completed: false)
+        defer { defaults.removePersistentDomain(forName: suite); session.shutdown() }
+        session.updatePassword()
+        XCTAssertTrue(session.isUpdatingPassword)
+        session.credentials.save(password: "replacement-password")
+        for _ in 0..<100 where session.credentials.isBusy || session.isUpdatingPassword {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(session.credentials.status, .sessionReady)
+        XCTAssertFalse(session.isUpdatingPassword)
+        XCTAssertEqual(session.credentials.withCachedPassword { $0 }, "replacement-password")
+        XCTAssertEqual(session.step, .credential)
+        XCTAssertTrue(session.setupVisible)
+        XCTAssertFalse(defaults.bool(forKey: "setupCompleted"))
+    }
+
+    func testFailedPasswordUpdateKeepsEntryModeForRetry() async throws {
+        let credentials = ProtectedCredentialController(store: RemovalCredentialStore(),
+                                                        validator: RemovalTestPasswordValidator(reject: true))
+        let (session, defaults, suite) = try session(credentials: credentials, completed: false)
+        defer { defaults.removePersistentDomain(forName: suite); session.shutdown() }
+        session.updatePassword()
+        credentials.save(password: "wrong-password")
+        for _ in 0..<100 where credentials.isBusy { try await Task.sleep(for: .milliseconds(10)) }
+        session.refresh()
+        XCTAssertEqual(credentials.status, .failed(ProtectedCredentialError.passwordVerificationFailed.localizedDescription))
+        XCTAssertTrue(session.isUpdatingPassword)
+        XCTAssertNil(credentials.withCachedPassword { $0 })
+    }
+
+    func testCanceledPasswordUpdateKeepsEntryModeWithoutAuthorizing() async throws {
+        let (session, defaults, suite) = try session(completed: false)
+        defer { defaults.removePersistentDomain(forName: suite); session.shutdown() }
+        session.updatePassword()
+        session.credentials.save(password: "replacement-password")
+        session.credentials.cancelAuthorization()
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertTrue(session.isUpdatingPassword)
+        XCTAssertNotEqual(session.credentials.status, .sessionReady)
+        XCTAssertNil(session.credentials.withCachedPassword { $0 })
+    }
+
+    private func session(store: RemovalTemplateStore? = nil, credentials: ProtectedCredentialController? = nil,
+                         completed: Bool = true) throws -> (AppSessionController, UserDefaults, String) {
         let suite = "MacPearlRemovalTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defaults.set(true, forKey: "setupCompleted")
+        defaults.set(completed, forKey: "setupCompleted")
         let session = AppSessionController(defaults: defaults,
                                           templateStore: try store ?? RemovalTemplateStore(template()),
                                           credentialController: credentials ?? ProtectedCredentialController(store: RemovalCredentialStore(), validator: RemovalTestPasswordValidator()),
@@ -174,5 +218,8 @@ nonisolated private final class RemovalCredentialStore: ProtectedCredentialStori
 }
 
 nonisolated private struct RemovalTestPasswordValidator: SystemPasswordValidating {
-    func validate(_ password: String) throws {}
+    var reject = false
+    func validate(_ password: String) throws {
+        if reject { throw ProtectedCredentialError.passwordVerificationFailed }
+    }
 }

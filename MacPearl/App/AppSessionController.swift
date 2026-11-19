@@ -154,6 +154,9 @@ final class AppSessionController: ObservableObject {
     }
 
     func refresh() {
+        if credentials.status == .sessionReady {
+            isUpdatingPassword = false
+        }
         cameraGranted = AVCaptureDevice.authorizationStatus(for: .video) == .authorized
         accessibilityGranted = AccessibilityLoginUnlocker.isTrusted
         readiness = AppReadiness.evaluate(completed: completed, hasFace: hasFace, camera: cameraGranted,
