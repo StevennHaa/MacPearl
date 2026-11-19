@@ -1,0 +1,42 @@
+MacPearl experimental beta — installation
+
+Requires Apple silicon, a working Secure Enclave, and macOS 15 or later. Individual OS/device combinations
+still require testing. This build is ad-hoc signed, without an Apple-verified
+publisher identity or Apple notarization.
+
+1. Open the DMG and drag MacPearl to Applications.
+2. Eject the DMG. Open MacPearl from Applications.
+3. If macOS blocks it as an unidentified developer or says Apple cannot check
+   it for malicious software, open System Settings > Privacy & Security.
+   If offered, choose Open Anyway for MacPearl and confirm the system prompt.
+   Managed Macs may prevent this override.
+   If macOS reports malware or damage, stop and contact the download provider.
+4. Complete setup: Camera permission, Accessibility permission, face enrollment
+   and Store and Authorize for your Mac password. Use Authorize Session again
+   after quitting or restarting MacPearl.
+
+Keep macOS security protections enabled. No Terminal bypass is needed in these
+instructions. Only approve a download obtained from the intended provider.
+
+Recognition runs locally. The beta has no liveness detection; resistance to
+photographs and video replay has not been established. It is a convenience
+feature for an already signed-in session, not Face ID, FileVault or startup login.
+Keep your password available for manual unlocking.
+
+Updates are manual: pause automatic unlock, quit MacPearl, then replace the app
+in Applications with the newer download. Ad-hoc signatures can change between
+builds. Camera/Accessibility permissions may need to be granted again, and
+Keychain authorization or re-enrollment may be needed. Upgrade behavior must be
+tested for each release; do not assume a seamless migration from development
+or Developer ID builds.
+
+Before uninstalling: remove the stored password and saved face in MacPearl's
+Settings, turn off launch at login, quit, then delete the app from Applications.
+Deleting the app alone does not remove its Keychain data. Camera/Accessibility
+permissions can be removed separately in System Settings.
+
+Credential protection in this build: macOS user presence is required for a Secure
+Enclave key operation. Only a device-wrapped key, public key and encrypted password
+are persisted in the traditional Keychain; the session encryption key is not stored
+in plaintext. Older builds with Keychain error -34018 must be replaced. Earlier
+credential services are not migrated automatically; set up credentials again.

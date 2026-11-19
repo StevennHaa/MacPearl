@@ -56,6 +56,7 @@ nonisolated enum ProtectedCredentialError: LocalizedError, Equatable {
     case authorizationRequired
     case passwordVerificationFailed
     case keychain(OSStatus)
+    case secureEnclaveUnavailable
 
     var errorDescription: String? {
         switch self {
@@ -66,7 +67,11 @@ nonisolated enum ProtectedCredentialError: LocalizedError, Equatable {
             "Your saved unlock credential needs repair. Enter your current Mac password to rebuild it."
         case .authorizationRequired: "Authorize MacPearl while signed in before locking."
         case .passwordVerificationFailed: "macOS could not verify this login password. Check your current Mac password and try again."
+        case .keychain(errSecMissingEntitlement):
+            "This build is missing access required by its credential storage. Re-entering your password will not fix it. Install a corrected MacPearl build."
         case .keychain(let status): "The protected credential could not be accessed (Keychain error \(status))."
+        case .secureEnclaveUnavailable:
+            "This Mac cannot provide the Secure Enclave protection required by this build. Automatic unlock remains unavailable."
         }
     }
 }
@@ -354,7 +359,7 @@ final class ProtectedCredentialController: ObservableObject {
     private var operationID = UUID()
 
     init(store: (any ProtectedCredentialStoring)? = nil, validator: any SystemPasswordValidating = SystemPasswordValidator()) {
-        self.store = store ?? KeychainProtectedCredentialStore()
+        self.store = store ?? CredentialStoreSelection.make()
         worker = CredentialWorker(store: self.store, validator: validator)
         do {
             credentialHealth = try self.store.credentialHealth()

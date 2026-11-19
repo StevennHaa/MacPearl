@@ -60,6 +60,19 @@ class ReleaseCLITests(unittest.TestCase):
             self.assertEqual(result.returncode, 2)
             self.assertFalse((work / 'invalid').exists())
 
+            log.write_text('')
+            result = subprocess.run(['/bin/bash', str(ROOT / 'Scripts/release.sh'), 'package-free',
+                                     '/archive with spaces/MacPearl.xcarchive', str(work / 'free dmg')],
+                                    env=env, text=True, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            args = log.read_text().splitlines()
+            self.assertIn('Scripts/package-free.py', args)
+            self.assertIn('/archive with spaces/MacPearl.xcarchive', args)
+            self.assertIn(str(work / 'free dmg'), args)
+            result = subprocess.run(['/bin/bash', str(ROOT / 'Scripts/release.sh'), 'package-free'],
+                                    env=env, text=True, capture_output=True)
+            self.assertEqual(result.returncode, 2)
+
 
 if __name__ == '__main__':
     unittest.main()

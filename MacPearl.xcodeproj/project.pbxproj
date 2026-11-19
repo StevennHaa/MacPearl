@@ -25,6 +25,13 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		D10000000000000000000001 /* Exceptions for "MacPearl" folder in "MacPearl" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Resources/Branding/macpearl-logo.png,
+			);
+			target = 71E967F8306C452F005F1680 /* MacPearl */;
+		};
 		B50000000000000000000013 /* Exceptions for "MacPearlAuthorizationPlugin" folder in "MacPearlAuthorizationPlugin" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -44,6 +51,9 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		71E967FB306C452F005F1680 /* MacPearl */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				D10000000000000000000001 /* Exceptions for "MacPearl" folder in "MacPearl" target */,
+			);
 			path = MacPearl;
 			sourceTree = "<group>";
 		};

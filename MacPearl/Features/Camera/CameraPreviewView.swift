@@ -12,10 +12,12 @@ struct CameraPreviewView: NSViewRepresentable {
     let faces: [DetectedFace]
     let captureState: FaceCaptureState
     var videoGravity: AVLayerVideoGravity = .resizeAspectFill
+    var isMirrored: Bool? = nil
 
     func makeNSView(context: Context) -> CameraPreviewNSView {
         let view = CameraPreviewNSView(session: session, faces: faces, captureState: captureState)
         view.videoGravity = videoGravity
+        view.isMirrored = isMirrored
         return view
     }
 
@@ -24,12 +26,17 @@ struct CameraPreviewView: NSViewRepresentable {
         nsView.faces = faces
         nsView.captureState = captureState
         nsView.videoGravity = videoGravity
+        nsView.isMirrored = isMirrored
     }
 }
 
 final class CameraPreviewNSView: NSView {
     private let previewLayer = AVCaptureVideoPreviewLayer()
     private let faceOverlayLayer = CAShapeLayer()
+
+    var isMirrored: Bool? {
+        didSet { updateMirroring() }
+    }
 
     var videoGravity: AVLayerVideoGravity {
         get { previewLayer.videoGravity }
@@ -46,7 +53,7 @@ final class CameraPreviewNSView: NSView {
 
     var session: AVCaptureSession? {
         get { previewLayer.session }
-        set { previewLayer.session = newValue }
+        set { previewLayer.session = newValue; updateMirroring() }
     }
 
     init(session: AVCaptureSession, faces: [DetectedFace], captureState: FaceCaptureState) {
@@ -78,6 +85,7 @@ final class CameraPreviewNSView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         previewLayer.frame = bounds
+        updateMirroring()
         faceOverlayLayer.frame = bounds
         updateFaceOverlay()
         CATransaction.commit()
@@ -113,6 +121,13 @@ final class CameraPreviewNSView: NSView {
         CATransaction.setDisableActions(true)
         faceOverlayLayer.path = path
         CATransaction.commit()
+    }
+
+    private func updateMirroring() {
+        guard let isMirrored, let connection = previewLayer.connection,
+              connection.isVideoMirroringSupported else { return }
+        connection.automaticallyAdjustsVideoMirroring = false
+        connection.isVideoMirrored = isMirrored
     }
 
     private func updateOverlayColor() {

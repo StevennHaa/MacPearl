@@ -15,7 +15,7 @@ MacPearl is an experimental macOS menu bar app that unlocks your signed-in sessi
 - **Guarded automatic unlock** — After a verified lock-screen face match, MacPearl can submit your stored password through Accessibility — only when the screen is locked, the console account matches, and the session is authorized.
 - **Notch unlock overlay** — Animated feedback in the MacBook notch while scanning and unlocking.
 - **Launch at login** — Optional start so MacPearl is ready when you wake your Mac.
-- **Privacy-first credentials** — Your Mac password is encrypted with AES-GCM; the key lives in the Keychain behind user-presence protection and stays in memory only for the authorized app session.
+- **Privacy-first credentials** — Your Mac password is encrypted with AES-GCM. Free builds use a user-presence-protected Secure Enclave key to reconstruct the session key; only the wrapped key and ciphertext are persisted in the traditional Keychain. The authorized session key stays in memory until MacPearl quits.
 
 ---
 
@@ -40,6 +40,8 @@ MacPearl is an experimental macOS menu bar app that unlocks your signed-in sessi
    4. Choose **Authorize Session** when MacPearl starts (required after each quit)
 
 For setup details and safety checks, see [Docs/guarded-unlock.md](Docs/guarded-unlock.md).
+
+For app-only release rehearsals and local verification, see [Docs/release-builds.md](Docs/release-builds.md). MacPearl is intended to remain free. The selected website/DMG route uses ad-hoc signing without paid Apple membership; macOS first-launch approval is required. Downloadable distribution is pending model licensing and release validation. See [installation instructions](Docs/free-download-installation.txt).
 
 ---
 
