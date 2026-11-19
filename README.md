@@ -8,9 +8,23 @@
 
 MacPearl is a native macOS menu bar app that connects local face recognition with a guarded automatic-unlock flow. Enroll your face, authorize the app, and look toward the camera when your Mac locks or wakes. Face processing runs on your Mac without a cloud service.
 
-**Status:** Experimental beta, version 0.1.3. The packaged app targets Apple silicon and macOS 15 or later. Public DMG distribution is pending model redistribution permission and release validation.
+**Status:** Experimental beta, version 0.1.3 (13). The packaged app targets Apple silicon and macOS 15 or later and requires a working Secure Enclave.
 
 > This beta has no liveness detection. Resistance to photographs and video replay has not been established. Keep your password available; webcam recognition does not provide Face ID or Touch ID assurance.
+
+## Download and install
+
+**[Download MacPearl 0.1.3 for Apple silicon](https://github.com/StevennHaa/MacPearl/releases/download/v0.1.3/MacPearl-0.1.3-13-arm64-experimental.dmg)**
+
+[Release notes](https://github.com/StevennHaa/MacPearl/releases/tag/v0.1.3) · [SHA-256 checksum](https://github.com/StevennHaa/MacPearl/releases/download/v0.1.3/MacPearl-0.1.3-13-arm64-experimental.dmg.sha256) · [All releases](https://github.com/StevennHaa/MacPearl/releases)
+
+Requires Apple silicon, macOS 15 or later, a camera, and a working Secure Enclave.
+
+> **Signing notice:** This experimental beta is ad-hoc signed and is not notarized by Apple. It has no Apple-issued Developer ID, so macOS cannot verify an Apple-issued publisher identity or Apple notarization for this download. macOS may block it on first launch.
+
+Drag MacPearl to **Applications**, eject the DMG, then open the app. If macOS blocks it as an unidentified developer and offers an override, use **System Settings → Privacy & Security → Open Anyway**. Managed Macs may prevent this. Keep macOS security protections enabled; if macOS reports malware or damage, stop and contact the project maintainer.
+
+See the [installation and removal instructions](Docs/free-download-installation.txt) for setup, permissions, updates, and removing saved data. Updates are installed manually from GitHub Releases.
 
 ## The experience
 
@@ -75,6 +89,6 @@ Thank you to the projects and developers whose work informed MacPearl:
 
 ### Licensing
 
-InsightFace publishes its code under MIT, while its pretrained models have separate [non-commercial research terms](https://github.com/deepinsight/insightface#license). Attribution does not grant redistribution rights; permission for the bundled weights remains a prerequisite for public DMG distribution.
+InsightFace publishes its code under MIT, while its pretrained models have separate [non-commercial research terms](https://github.com/deepinsight/insightface#license). The project owner has confirmed permission to redistribute the bundled weights with MacPearl. Upstream projects and model assets retain their respective terms.
 
 MacPearl does not currently include a project-wide license. Upstream projects and model assets retain their respective terms.
