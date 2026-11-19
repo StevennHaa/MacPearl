@@ -1,5 +1,9 @@
 <p align="center">
   <img src="MacPearl/Resources/Assets.xcassets/AppIcon.appiconset/app-icon-128x128@2x.png" alt="MacPearl app icon" width="96" height="96">
+  &nbsp;&nbsp;
+  <a href="https://github.com/StevennHaa/MacPearl/releases/download/v0.1.3/MacPearl-0.1.3-13-arm64-experimental.dmg">
+    <img src="MacPearl/Resources/Branding/download-mac.svg" alt="Download MacPearl 0.1.3 for macOS — Apple silicon" width="272" height="96">
+  </a>
 </p>
 
 <h1 align="center">MacPearl</h1>
