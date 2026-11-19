@@ -8,6 +8,16 @@
 import SwiftUI
 
 @main
+enum MacPearlEntryPoint {
+    static func main() {
+        if CommandLine.arguments.contains("--credential-self-test") {
+            let interactive = CommandLine.arguments.contains("--interactive")
+            exit(CredentialStorageSelfTest.run(interactive: interactive))
+        }
+        MacPearlApp.main()
+    }
+}
+
 struct MacPearlApp: App {
     @StateObject private var session = AppSessionController()
 #if DEBUG

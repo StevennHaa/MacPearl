@@ -53,13 +53,19 @@ def inspect(args):
             'Compiled recognition model missing')
     print(f"Contents OK: {info['CFBundleShortVersionString']} ({info['CFBundleVersion']}), "
         f"macOS {info['LSMinimumSystemVersion']}+, {architectures}")
-    if args.signed or args.notarized:
+    if args.signed or args.notarized or args.adhoc:
         run('/usr/bin/codesign', '--verify', '--deep', '--strict', '--verbose=2', str(app))
         details = run('/usr/bin/codesign', '-d', '--verbose=4', str(app), include_stderr=True).decode()
-        require('Authority=Developer ID Application:' in details, 'Developer ID Application signature required')
-        require('TeamIdentifier=FY4JUG23QT' in details, 'Unexpected signing team')
+        if args.adhoc:
+            require('Signature=adhoc' in details, 'Ad-hoc signature required')
+            require(info.get('MacPearlCredentialStorage') == 'secure-enclave-v1',
+                    'Free app must select Secure Enclave credential storage')
+        else:
+            require('Authority=Developer ID Application:' in details, 'Developer ID Application signature required')
+            require('TeamIdentifier=FY4JUG23QT' in details, 'Unexpected signing team')
         require(re.search(r'flags=.*\bruntime\b', details), 'Hardened runtime missing')
-        require(re.search(r'^Timestamp=.+$', details, re.MULTILINE), 'Secure timestamp missing')
+        if not args.adhoc:
+            require(re.search(r'^Timestamp=.+$', details, re.MULTILINE), 'Secure timestamp missing')
         raw = run('/usr/bin/codesign', '-d', '--entitlements', ':-', str(app), include_stderr=True)
         start = raw.find(b'<?xml')
         end = raw.find(b'</plist>', start)
@@ -67,12 +73,16 @@ def inspect(args):
         entitlements = plistlib.loads(raw[start:end + len(b'</plist>')])
         require(not entitlements.get('com.apple.security.get-task-allow'), 'Debug entitlement present')
         require(entitlements.get('com.apple.security.device.camera') is True, 'Camera entitlement missing')
-        print('Developer ID signature, team, runtime, timestamp and required entitlements OK')
+        if args.adhoc:
+            require(not entitlements.get('keychain-access-groups'), 'Unexpected shared Keychain group')
+            print('Ad-hoc signature, runtime and camera entitlement OK; no publisher identity or notarization')
+        else:
+            print('Developer ID signature, team, runtime, timestamp and required entitlements OK')
     if args.notarized:
         run('/usr/bin/xcrun', 'stapler', 'validate', str(app))
         run('/usr/sbin/spctl', '--assess', '--type', 'execute', '--verbose=4', str(app))
         print('Stapled ticket and Gatekeeper assessment OK; hardware testing is still required')
-    elif not args.signed:
+    elif not args.signed and not args.adhoc:
         print('Structure check only: signing/notarization and device behavior are NOT validated')
 
 
@@ -82,8 +92,11 @@ if __name__ == '__main__':
     parser.add_argument('--archive', action='store_true')
     parser.add_argument('--signed', action='store_true')
     parser.add_argument('--notarized', action='store_true')
+    parser.add_argument('--adhoc', action='store_true')
     try:
-        inspect(parser.parse_args())
+        args = parser.parse_args()
+        require(not (args.adhoc and (args.signed or args.notarized)), 'Choose ad-hoc or Developer ID verification')
+        inspect(args)
     except (ValueError, OSError, plistlib.InvalidFileException, subprocess.CalledProcessError) as error:
         print(f'FAIL: {error}', file=sys.stderr)
         if isinstance(error, subprocess.CalledProcessError) and error.output:

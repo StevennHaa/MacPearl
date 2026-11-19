@@ -65,12 +65,15 @@ struct MacPearlOnboardingView: View {
         case .enrollment:
             if enrollment.isActive {
                 CameraPreviewView(session: camera.session, faces: camera.faceDetectionResult.faces,
-                                  captureState: camera.faceCaptureState, videoGravity: .resizeAspect)
-                    .frame(height: 350).clipShape(RoundedRectangle(cornerRadius: 16))
+                                  captureState: camera.faceCaptureState, videoGravity: .resizeAspect,
+                                  isMirrored: true)
+                    .frame(height: 250).clipShape(RoundedRectangle(cornerRadius: 16))
             }
             switch enrollment.state {
-            case .capturing(let pose, let completed): Text("Pose \(completed + 1) of 3: \(pose.instruction)")
-            case .processing: ProgressView("Processing pose…")
+            case .capturing(let pose, let completed):
+                enrollmentGuidance(pose: pose, completed: completed, processing: false)
+            case .processing(let pose, let completed):
+                enrollmentGuidance(pose: pose, completed: completed, processing: true)
             case .enrolled: Label("Your local face template is ready.", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
             case .failed(let message): Text(message).foregroundStyle(.orange)
             case .idle: Text("Capture three poses in good light. Keep your face centered.")
@@ -103,6 +106,12 @@ struct MacPearlOnboardingView: View {
             Text("After finishing, press Control–Command–Q and look at the camera. Your normal password remains available.")
             MacPearlPreferencesView(session: session)
         }
+    }
+
+    private func enrollmentGuidance(pose: FaceCapturePose, completed: Int, processing: Bool) -> some View {
+        EnrollmentGuidanceView(pose: pose, completed: completed,
+            guidance: .evaluate(pose: pose, faces: camera.faceDetectionResult.faces,
+                                capture: camera.faceCaptureState, processing: processing))
     }
 
     private func permission(_ title: String, granted: Bool, action: @escaping () -> Void) -> some View {

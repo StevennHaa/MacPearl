@@ -11,6 +11,8 @@ Usage: bash Scripts/release.sh COMMAND [ARGS]
   archive-unsigned [OUTPUT]    Build an arm64 rehearsal archive. Not distributable.
   archive [OUTPUT]             Build a locally signed arm64 archive using Xcode settings.
   export ARCHIVE OUTPUT       Export with Developer ID; requires installed signing assets.
+  package-free ARCHIVE OUTPUT Copy an unsigned archive app, ad-hoc sign and create a local DMG.
+  test-free-dmg DMG [--interactive] Test the mounted free app with disposable credentials.
   inspect APP                 Check app contents and metadata (unsigned builds allowed).
   verify APP                  Also require Developer ID, runtime and valid signature.
   verify-notarized APP         Also require stapled ticket and Gatekeeper acceptance.
@@ -67,6 +69,14 @@ case "$command" in
         python3 Scripts/verify-release.py --archive "$1"
         xcodebuild -exportArchive -archivePath "$1" -exportPath "$2" -exportOptionsPlist Scripts/ExportOptions.plist
         python3 Scripts/verify-release.py --signed "$2/MacPearl.app"
+        ;;
+    package-free)
+        [[ $# == 2 ]] || { usage; exit 2; }
+        python3 Scripts/package-free.py "$1" "$2"
+        ;;
+    test-free-dmg)
+        [[ $# == 1 || ( $# == 2 && "$2" == --interactive ) ]] || { usage; exit 2; }
+        python3 Scripts/test-free-dmg.py "$@"
         ;;
     inspect|verify|verify-notarized)
         [[ $# == 1 ]] || { usage; exit 2; }

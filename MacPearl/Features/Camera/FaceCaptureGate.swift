@@ -48,7 +48,7 @@ enum FaceCapturePose: String, CaseIterable, Hashable, Sendable {
         }
     }
 
-    fileprivate var target: FacePoseTarget {
+    var target: FacePoseTarget {
         switch self {
         case .forward: .forward
         case .left: .left
