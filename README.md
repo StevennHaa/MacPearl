@@ -22,6 +22,7 @@ MacPearl is an experimental macOS menu bar app that unlocks your signed-in sessi
 ## Requirements
 
 - macOS 15 or later
+- Free DMG: Apple silicon and a working Secure Enclave
 - A Mac with a built-in or supported camera
 - Xcode (latest stable) to build from source
 - Camera and Accessibility permissions
@@ -86,6 +87,7 @@ The authorization plug-in and camera broker targets are retained as research art
 ## Security notes
 
 - Face templates and credentials stay on-device.
+- This beta has no liveness detection; resistance to photographs and video replay has not been established.
 - Automatic unlock requires an explicit authorized session each time MacPearl launches.
 - At most **one** password attempt per lock session; sleep/wake does not reset that limit.
 - Fast User Switching is guarded — MacPearl will not enter your password into another account’s lock screen.
@@ -107,7 +109,7 @@ The authorization plug-in and camera broker targets are retained as research art
 
 ## Status
 
-Experimental / early beta (`0.1.0`). Built for learning and personal use on a signed-in Mac session. Expect rough edges; contributions and feedback are welcome.
+Experimental / early beta (`0.1.3`). Built for learning and personal use on a signed-in Mac session. Expect rough edges; contributions and feedback are welcome.
 
 ---
 

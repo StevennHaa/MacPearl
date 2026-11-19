@@ -60,7 +60,10 @@ struct MacPearlOnboardingView: View {
             Text("Used to enroll and recognize your face locally.").foregroundStyle(.secondary)
             permission("Accessibility", granted: session.accessibilityGranted, action: session.requestAccessibility)
             Text("Used to submit your password only after a verified lock-screen match.").foregroundStyle(.secondary)
-            Button("Open System Settings") { NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/System Settings.app")) }
+            if !session.cameraGranted || !session.accessibilityGranted {
+                Text("After allowing access in System Settings, return here and click Check Permissions. When both permissions show a checkmark, click Continue.")
+                    .font(.callout)
+            }
             Button("Check Permissions") { session.refresh() }
         case .enrollment:
             if enrollment.isActive {
@@ -80,27 +83,35 @@ struct MacPearlOnboardingView: View {
             }
             if !session.hasFace && !enrollment.isActive { Button("Start Enrollment") { session.beginEnrollment() } }
         case .credential:
-            Text("Authorize automatic unlock for this app session. The decryption key stays in memory until MacPearl quits.")
-            if credentials.needsRepair {
-                Text("Your saved unlock credential needs repair. Enter your current Mac password to rebuild it.")
-                    .foregroundStyle(.orange)
+            if credentials.status == .sessionReady {
+                Label("Password saved and automatic unlock authorized", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                if !session.authorizationOnly {
+                    Text("Select Continue to finish setup. You don’t need to enter your password again.")
+                }
+            } else {
+                Text("macOS will ask you to approve automatic unlock for this app session.")
+                if credentials.needsRepair {
+                    Text("Your saved unlock credential needs repair. Enter your current Mac password to rebuild it.")
+                        .foregroundStyle(.orange)
+                }
+                if !credentials.hasStoredCredential || session.isUpdatingPassword {
+                    SecureField("Mac login password", text: $password).textFieldStyle(.roundedBorder).disabled(credentials.isBusy)
+                    Button(credentials.needsRepair ? "Verify and Repair" : "Verify, Save and Authorize") {
+                        let draft = password
+                        password = ""
+                        credentials.save(password: draft)
+                    }.disabled(password.isEmpty || credentials.isBusy)
+                } else {
+                    Button("Authorize Session") { session.requestAuthorization() }.disabled(credentials.isBusy)
+                }
+                if credentials.isBusy { ProgressView() }
+                Text(credentials.status.message).foregroundStyle(.secondary)
+                if credentials.hasStoredCredential && !session.isUpdatingPassword {
+                    Button("Update Password…") { session.updatePassword() }.disabled(credentials.isBusy)
+                }
+                Text("Enter your current Mac login password. If you change it in macOS, update it here. Verification is performed only when you save or authorize—not repeatedly at the lock screen.").font(.caption).foregroundStyle(.secondary)
             }
-            if !credentials.hasStoredCredential || session.isUpdatingPassword {
-                SecureField("Mac login password", text: $password).textFieldStyle(.roundedBorder).disabled(credentials.isBusy)
-                Button(credentials.needsRepair ? "Verify and Repair" : "Verify, Save and Authorize") {
-                    let draft = password
-                    password = ""
-                    credentials.save(password: draft)
-                }.disabled(password.isEmpty || credentials.isBusy)
-            } else if credentials.status != .sessionReady {
-                Button("Authorize Session") { session.requestAuthorization() }.disabled(credentials.isBusy)
-            }
-            if credentials.isBusy { ProgressView() }
-            Text(credentials.status.message).foregroundStyle(.secondary)
-            if credentials.hasStoredCredential && !session.isUpdatingPassword {
-                Button("Update Password…") { session.updatePassword() }.disabled(credentials.isBusy)
-            }
-            Text("Enter your current Mac login password. If you change it in macOS, update it here. Verification is performed only when you save or authorize—not repeatedly at the lock screen.").font(.caption).foregroundStyle(.secondary)
         case .review:
             Label("Ready for your next locked session", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
             Text("After finishing, press Control–Command–Q and look at the camera. Your normal password remains available.")
