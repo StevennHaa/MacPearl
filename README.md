@@ -41,7 +41,7 @@ You need macOS 15 or later, a camera, and Xcode with the macOS SDK required by t
 4. Enroll your face, enter your Mac login password, and approve the native macOS authorization prompt. Finish setup after authorization succeeds.
 5. Lock with **Control–Command–Q** and look toward the camera. Authorize the session again after quitting or restarting MacPearl.
 
-See [installation and removal instructions](Docs/free-download-installation.txt) for the ad-hoc DMG, and [unlock behavior](Docs/guarded-unlock.md) for setup and recovery details.
+See the [installation and removal instructions](Docs/free-download-installation.txt) for the ad-hoc DMG.
 
 ## Validation
 
@@ -54,7 +54,7 @@ bash Scripts/release.sh test
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s Scripts/tests -v
 ```
 
-Local release tooling checks archive contents, signing, disk-image integrity, checksums, and disposable Keychain/Secure Enclave operations from the packaged app. These checks do not establish compatibility with every supported macOS version or resistance to spoofing. See [build and verification commands](Docs/release-builds.md).
+Local release tooling checks archive contents, signing, disk-image integrity, checksums, and disposable Keychain/Secure Enclave operations from the packaged app. These checks do not establish compatibility with every supported macOS version or resistance to spoofing. Run `bash Scripts/release.sh --help` for archive, packaging, and verification commands.
 
 ## Scope and limitations
 
@@ -62,7 +62,7 @@ MacPearl operates within an already signed-in user session. FileVault, startup l
 
 The beta DMG is ad-hoc signed, without an Apple-verified publisher or notarization. Updates are manual, and changed signatures may require renewed permissions. The private SkyLight overlay integration may change with macOS updates. Liveness detection is planned for a later update.
 
-The authorization plug-in, camera broker, and `MacPearlAuthCtl` folders are retained as [diagnostic research](Docs/authorization-plugin-spike.md). The shipping app does not install or enable them.
+The authorization plug-in, camera broker, and `MacPearlAuthCtl` folders are retained as [diagnostic research](Tools/MacPearlAuthCtl/README.md). The shipping app does not install or enable them.
 
 ## Acknowledgments
 
